@@ -135,7 +135,7 @@ export function HomeClient() {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch("/api/news", { cache: "no-store" });
+      const res = await fetch(`news-data.json?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ApiPayload;
       setData(json);
