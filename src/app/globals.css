@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #05060a;
+  --accent: #e63946;
+  --accent-soft: #ff6b7a;
+  --glass: rgba(255, 255, 255, 0.06);
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: var(--text);
+  background: radial-gradient(ellipse 120% 80% at 50% -20%, #1a1528 0%, var(--bg-deep) 45%);
+  font-family:
+    system-ui,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    "Noto Sans Arabic",
+    "Noto Sans",
+    sans-serif;
+}
