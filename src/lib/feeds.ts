@@ -82,6 +82,14 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     locale: "ar",
     independentMedia: true,
   },
+  // rassdtunisia.net — Tunisian news outlet.
+  {
+    id: "rassd-tunisia",
+    label: "رصد تونس — Rassd",
+    url: "https://rassdtunisia.net/feed/",
+    locale: "ar",
+    independentMedia: true,
+  },
   // ——— French ———
   {
     id: "businessnews",

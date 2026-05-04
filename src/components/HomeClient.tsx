@@ -13,6 +13,77 @@ const FILTER_LABELS: Record<TopicFilterGroup, { fr: string; ar: string }> = {
   4: { fr: "Tunisie & divers", ar: "تونس و عام" },
 };
 
+/** Bidirectional search aliases (latin <-> arabic) used to expand query terms. */
+const SEARCH_EQUIVALENTS: Record<string, string[]> = {
+  tunis: ["تونس", "tunisie"],
+  tunisie: ["تونس", "tunis"],
+  gabes: ["قابس"],
+  sfax: ["صفاقس"],
+  sousse: ["سوسة"],
+  monastir: ["المنستير"],
+  nabeul: ["نابل"],
+  bizerte: ["بنزرت"],
+  kairouan: ["القيروان"],
+  mahdia: ["المهدية"],
+  djerba: ["جربة"],
+  medenine: ["مدنين"],
+  tataouine: ["تطاوين"],
+  tunisian: ["تونسي", "تونس"],
+  economy: ["اقتصاد", "اقتصادي"],
+  politique: ["سياسة", "سياسي"],
+  politics: ["سياسة", "سياسي"],
+  sport: ["رياضة", "رياضي"],
+  culture: ["ثقافة", "ثقافي"],
+  monde: ["عالم", "دولي"],
+  international: ["دولي", "عالمي"],
+  تونس: ["tunis", "tunisie"],
+  قابس: ["gabes"],
+  صفاقس: ["sfax"],
+  سوسة: ["sousse"],
+  المنستير: ["monastir"],
+  نابل: ["nabeul"],
+  بنزرت: ["bizerte"],
+  القيروان: ["kairouan"],
+  المهدية: ["mahdia"],
+  جربة: ["djerba"],
+  مدنين: ["medenine"],
+  تطاوين: ["tataouine"],
+  اقتصاد: ["economy", "economie"],
+  سياسة: ["politique", "politics"],
+  رياضة: ["sport"],
+  ثقافة: ["culture"],
+  دولي: ["international", "monde"],
+};
+
+function normalizeForSearch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[إأٱآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchTerms(query: string): { phrase: string; tokenGroups: string[][] } {
+  const normalized = normalizeForSearch(query);
+  if (!normalized) return { phrase: "", tokenGroups: [] };
+  const baseTokens = normalized.split(" ").filter(Boolean);
+  const tokenGroups = baseTokens.map((token) => {
+    const group = new Set<string>([token]);
+    const aliases = SEARCH_EQUIVALENTS[token] ?? [];
+    for (const alias of aliases) group.add(normalizeForSearch(alias));
+    return [...group].filter(Boolean);
+  });
+  return {
+    phrase: normalized,
+    tokenGroups,
+  };
+}
+
 function FilterToggle({
   groupId,
   on,
@@ -130,6 +201,7 @@ export function HomeClient() {
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<NewsArticle | null>(null);
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -163,14 +235,28 @@ export function HomeClient() {
     return articles.filter((a) => effective.includes(topicFilterGroup(a.topicKey)));
   }, [data?.articles, filterGroups]);
 
+  const searchedArticles = useMemo(() => {
+    const { phrase, tokenGroups } = searchTerms(searchQuery);
+    if (!phrase) return filteredArticles;
+
+    return filteredArticles.filter((a) => {
+      const haystack = normalizeForSearch(
+        `${a.title} ${a.summary ?? ""} ${a.sourceLabel} ${a.topic}`,
+      );
+      if (haystack.includes(phrase)) return true;
+      // AND between user words, OR inside each translation group.
+      return tokenGroups.every((group) => group.some((token) => haystack.includes(token)));
+    });
+  }, [filteredArticles, searchQuery]);
+
   const { arabic, french } = useMemo(() => {
-    const ar = filteredArticles.filter((a) => a.locale === "ar").sort(byArticleDateDesc);
-    const fr = filteredArticles.filter((a) => a.locale === "fr").sort(byArticleDateDesc);
+    const ar = searchedArticles.filter((a) => a.locale === "ar").sort(byArticleDateDesc);
+    const fr = searchedArticles.filter((a) => a.locale === "fr").sort(byArticleDateDesc);
     return {
       arabic: ar.slice(0, 72),
       french: fr.slice(0, 48),
     };
-  }, [filteredArticles]);
+  }, [searchedArticles]);
 
   const toggleFilterGroup = useCallback((id: TopicFilterGroup) => {
     setFilterGroups((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -213,6 +299,17 @@ export function HomeClient() {
           </button>
         </div>
       </header>
+
+      <div className="mx-auto w-full max-w-2xl rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+        <input
+          id="news-search"
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Recherche / بحث"
+          className="w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
+        />
+      </div>
 
       {err && (
         <div className="rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
@@ -338,7 +435,7 @@ export function HomeClient() {
               </h3>
               <ul className="flex flex-wrap gap-2 text-[11px] text-slate-400">
                 <li className="rounded-md bg-emerald-950/40 px-2 py-1 text-emerald-200/90">
-                  AR: Mozaïque, Diwan, Al Jazeera, Nawaat…
+                  AR: Mozaïque, Diwan, Al Jazeera, Nawaat, Rassd…
                 </li>
                 <li className="rounded-md bg-white/5 px-2 py-1">FR: Business News, Webdo</li>
               </ul>

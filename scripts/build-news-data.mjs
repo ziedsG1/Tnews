@@ -13,6 +13,7 @@ const FEEDS = [
   { id: "shems-ar", label: "شمس أف أم", url: "https://news.google.com/rss/search?q=site%3Ashemsfm.net&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
   { id: "nawaat", label: "نواة — Nawaat", url: "https://nawaat.org/feed/", locale: "ar", independentMedia: true },
   { id: "alqatiba", label: "الكتيبة — Alqatiba", url: "https://alqatiba.com/feed/", locale: "ar", independentMedia: true },
+  { id: "rassd-tunisia", label: "رصد تونس — Rassd", url: "https://rassdtunisia.net/feed/", locale: "ar", independentMedia: true },
   { id: "businessnews", label: "Business News", url: "https://www.businessnews.com.tn/rss", locale: "fr", independentMedia: false },
   { id: "google-tunisia-fr", label: "Actualités Tunisie (agrégé)", url: "https://news.google.com/rss/search?q=Tunisie&hl=fr&gl=TN&ceid=TN%3Afr", locale: "fr", independentMedia: false },
   { id: "webdo-fr", label: "Webdo.tn", url: "https://news.google.com/rss/search?q=site%3Awebdo.tn&hl=fr&gl=TN&ceid=TN%3Afr", locale: "fr", independentMedia: false },
