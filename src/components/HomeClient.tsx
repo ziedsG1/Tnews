@@ -121,6 +121,15 @@ type ApiPayload = {
   fetchedAt: string;
 };
 
+function staticNewsDataUrl(): string {
+  if (typeof window === "undefined") return "news-data.json";
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  const first = parts[0];
+  // On GitHub Pages project sites, app lives under /<repo-name>.
+  const basePath = first ? `/${first}` : "";
+  return `${basePath}/news-data.json?t=${Date.now()}`;
+}
+
 function formatCardDate(iso: string | null, locale: "ar" | "fr"): string {
   if (!iso) return locale === "ar" ? "بدون تاريخ" : "Sans date";
   const t = Date.parse(iso);
@@ -207,7 +216,7 @@ export function HomeClient() {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`news-data.json?t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(staticNewsDataUrl(), { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ApiPayload;
       setData(json);
