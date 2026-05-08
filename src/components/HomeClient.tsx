@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
-import { COUNTRIES, type CountryId } from "@/lib/countries";
+import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
 
@@ -214,6 +214,7 @@ export function HomeClient() {
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
   const [searchQuery, setSearchQuery] = useState("");
   const [country, setCountry] = useState<CountryId>("TN");
+  const [uiLang, setUiLang] = useState<UiLang>("ar");
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
   const load = useCallback(async () => {
@@ -244,6 +245,8 @@ export function HomeClient() {
     try {
       const stored = window.localStorage.getItem("tnews.country");
       if (stored) setCountry(stored as CountryId);
+      const storedLang = window.localStorage.getItem("tnews.uiLang");
+      if (storedLang === "ar" || storedLang === "fr" || storedLang === "en") setUiLang(storedLang);
     } catch {
       // ignore
     }
@@ -252,10 +255,47 @@ export function HomeClient() {
   useEffect(() => {
     try {
       window.localStorage.setItem("tnews.country", country);
+      window.localStorage.setItem("tnews.uiLang", uiLang);
     } catch {
       // ignore
     }
-  }, [country]);
+  }, [country, uiLang]);
+
+  const t = useMemo(() => {
+    const byLang = {
+      ar: {
+        searchPlaceholder: "بحث / Search",
+        noAr: "لا توجد مقالات حالياً.",
+        noFr: "لا توجد مقالات حالياً.",
+        selectedTitle: "المقال المحدد",
+        selectHint: "اختر خبراً من القائمة.",
+        sourceLink: "المصدر الأصلي ↗",
+        newsTitle: `أخبار ${activeCountry.names.ar}`,
+        intlTitle: "أخبار دولية",
+      },
+      fr: {
+        searchPlaceholder: "Recherche / Search",
+        noAr: "Aucun article pour le moment.",
+        noFr: "Aucun article pour le moment.",
+        selectedTitle: "Article sélectionné",
+        selectHint: "Choisissez un article dans les grilles.",
+        sourceLink: "Lire sur le site d'origine ↗",
+        newsTitle: `Actualités ${activeCountry.names.fr}`,
+        intlTitle: "Actualités internationales",
+      },
+      en: {
+        searchPlaceholder: "Search / بحث",
+        noAr: "No articles right now.",
+        noFr: "No articles right now.",
+        selectedTitle: "Selected article",
+        selectHint: "Choose an article from the grid.",
+        sourceLink: "Read on original source ↗",
+        newsTitle: `${activeCountry.names.en} news`,
+        intlTitle: "International news",
+      },
+    } as const;
+    return byLang[uiLang];
+  }, [uiLang, activeCountry]);
 
   const filteredArticles = useMemo(() => {
     const articles = data?.articles ?? [];
@@ -326,10 +366,20 @@ export function HomeClient() {
             </span>
           </div>
           <span className="truncate text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-400/85 sm:text-[11px]">
-            · {activeCountry.label}
+            · {activeCountry.names[uiLang]}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <select
+            value={uiLang}
+            onChange={(e) => setUiLang(e.target.value as UiLang)}
+            aria-label="Interface language"
+            className="hidden rounded-full border border-white/15 bg-white/[0.06] px-2 py-1 text-[10px] text-slate-200 outline-none hover:border-white/25 sm:block"
+          >
+            <option value="ar">AR</option>
+            <option value="fr">FR</option>
+            <option value="en">EN</option>
+          </select>
           {data?.fetchedAt && (
             <span className="hidden max-w-[9rem] truncate text-[9px] text-slate-500 lg:inline">
               {new Intl.DateTimeFormat("fr-TN", {
@@ -357,7 +407,7 @@ export function HomeClient() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Recherche / بحث"
+          placeholder={t.searchPlaceholder}
           className="w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
         />
       </div>
@@ -371,7 +421,7 @@ export function HomeClient() {
       <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-12">
           <div dir="rtl" lang="ar">
-            <h2 className="mb-4 text-2xl font-bold text-white">{`أخبار ${activeCountry.label}`}</h2>
+            <h2 className="mb-4 text-2xl font-bold text-white">{t.newsTitle}</h2>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {arabic.map((a) => (
                 <li key={a.id}>
@@ -384,12 +434,12 @@ export function HomeClient() {
               ))}
             </ul>
             {arabic.length === 0 && !loading && (
-              <p className="text-slate-500">لا توجد مقالات حالياً.</p>
+              <p className="text-slate-500">{t.noAr}</p>
             )}
           </div>
 
           <div dir="ltr" lang="fr">
-            <h2 className="mb-1 text-xl font-semibold text-slate-200">Actualités en français</h2>
+            <h2 className="mb-1 text-xl font-semibold text-slate-200">{t.intlTitle}</h2>
             <p className="mb-4 text-sm text-slate-500">Business News, fil Tunisie, Webdo…</p>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {french.map((a) => (
@@ -403,7 +453,7 @@ export function HomeClient() {
               ))}
             </ul>
             {french.length === 0 && !loading && (
-              <p className="text-slate-500">Aucun article pour le moment.</p>
+              <p className="text-slate-500">{t.noFr}</p>
             )}
           </div>
         </div>
@@ -415,11 +465,11 @@ export function HomeClient() {
             lang={selRtl ? "ar" : "fr"}
           >
             <h2 className="text-lg font-semibold text-white">
-              {selRtl ? "المقال المحدد" : "Article sélectionné"}
+              {t.selectedTitle}
             </h2>
             {!selected && (
               <p className="mt-2 text-sm text-slate-500">
-                {selRtl ? "اختر خبراً من القائمة." : "Choisissez un article dans les grilles."}
+                {t.selectHint}
               </p>
             )}
             {!selected && (
@@ -462,7 +512,7 @@ export function HomeClient() {
                   rel="noopener noreferrer"
                   className="inline-flex w-fit items-center gap-2 rounded-lg bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-300 ring-1 ring-sky-400/40 transition hover:bg-sky-500/25"
                 >
-                  {selRtl ? "المصدر الأصلي ↗" : "Lire sur le site d'origine ↗"}
+                  {t.sourceLink}
                 </a>
               </div>
             )}
