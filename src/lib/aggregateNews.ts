@@ -6,6 +6,7 @@ import { inferTopicKey, topicLabel } from "./topics";
 export type NewsArticle = {
   id: string;
   title: string;
+  translatedTitle?: string | null;
   link: string;
   sourceLabel: string;
   sourceId: string;

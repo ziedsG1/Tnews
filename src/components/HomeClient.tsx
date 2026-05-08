@@ -192,7 +192,7 @@ function ArticleCard({
         {formatCardDate(article.pubDate, article.locale)}
       </time>
       <p className={`mt-1 line-clamp-3 text-sm leading-snug text-slate-100 ${rtl ? "font-medium" : ""}`}>
-        {article.title}
+        {article.translatedTitle ?? article.title}
       </p>
       <span className="mt-2 inline-block text-[10px] text-slate-500">{article.topic}</span>
     </button>
@@ -221,7 +221,10 @@ export function HomeClient() {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/news?country=${encodeURIComponent(country)}`, { cache: "no-store" });
+      const res = await fetch(
+        `/api/news?country=${encodeURIComponent(country)}&lang=${encodeURIComponent(uiLang)}`,
+        { cache: "no-store" },
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ApiPayload;
       setData(json);
@@ -230,7 +233,7 @@ export function HomeClient() {
     } finally {
       setLoading(false);
     }
-  }, [country]);
+  }, [country, uiLang]);
 
   useEffect(() => {
     void load();
@@ -311,7 +314,7 @@ export function HomeClient() {
 
     return filteredArticles.filter((a) => {
       const haystack = normalizeForSearch(
-        `${a.title} ${a.summary ?? ""} ${a.sourceLabel} ${a.topic}`,
+        `${a.translatedTitle ?? a.title} ${a.title} ${a.summary ?? ""} ${a.sourceLabel} ${a.topic}`,
       );
       if (haystack.includes(phrase)) return true;
       // AND between user words, OR inside each translation group.
@@ -495,7 +498,9 @@ export function HomeClient() {
                     {selected.topic}
                   </span>
                 </div>
-                <p className="text-base font-medium leading-snug text-white">{selected.title}</p>
+                <p className="text-base font-medium leading-snug text-white">
+                  {selected.translatedTitle ?? selected.title}
+                </p>
                 <p className="text-xs uppercase tracking-wide text-slate-500">{selected.sourceLabel}</p>
                 <time
                   dateTime={selected.pubDate ?? undefined}
