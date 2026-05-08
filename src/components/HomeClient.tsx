@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
+import { COUNTRIES, type CountryId } from "@/lib/countries";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
 
@@ -168,6 +169,16 @@ function ArticleCard({
             Indé
           </span>
         )}
+        {article.sourceKind === "radio" && (
+          <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-200">
+            Radio
+          </span>
+        )}
+        {article.sourceKind === "state" && (
+          <span className="rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-200">
+            State
+          </span>
+        )}
         <span
           className={`text-[10px] font-semibold uppercase tracking-wide ${rtl ? "text-emerald-300/90" : "text-rose-400/90"}`}
         >
@@ -202,12 +213,13 @@ export function HomeClient() {
   const [selected, setSelected] = useState<NewsArticle | null>(null);
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
   const [searchQuery, setSearchQuery] = useState("");
+  const [country, setCountry] = useState<CountryId>("TN");
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch("/api/news", { cache: "no-store" });
+      const res = await fetch(`/api/news?country=${encodeURIComponent(country)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ApiPayload;
       setData(json);
@@ -216,7 +228,7 @@ export function HomeClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [country]);
 
   useEffect(() => {
     void load();
@@ -226,6 +238,23 @@ export function HomeClient() {
     const id = window.setInterval(() => void load(), 6 * 60 * 1000);
     return () => window.clearInterval(id);
   }, [load]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("tnews.country");
+      if (stored) setCountry(stored as CountryId);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("tnews.country", country);
+    } catch {
+      // ignore
+    }
+  }, [country]);
 
   const filteredArticles = useMemo(() => {
     const articles = data?.articles ?? [];
@@ -279,6 +308,18 @@ export function HomeClient() {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <select
+            value={country}
+            onChange={(e) => setCountry(e.target.value as CountryId)}
+            className="hidden rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[11px] text-slate-200 outline-none hover:border-white/25 sm:block"
+            aria-label="Country"
+          >
+            {COUNTRIES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
           {data?.fetchedAt && (
             <span className="hidden max-w-[9rem] truncate text-[9px] text-slate-500 lg:inline">
               {new Intl.DateTimeFormat("fr-TN", {

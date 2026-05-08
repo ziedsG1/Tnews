@@ -15,6 +15,7 @@ export type NewsArticle = {
   topicKey: TopicKey;
   locale: "ar" | "fr";
   independentMedia: boolean;
+  sourceKind: string | null;
 };
 
 const UA =
@@ -39,6 +40,7 @@ async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
   const items = feed.items ?? [];
   const cap = source.locale === "ar" ? 22 : 16;
   const independentMedia = source.independentMedia === true;
+  const sourceKind = source.kind ?? null;
 
   return items.slice(0, cap).map((item, idx) => {
     const title = (item.title ?? (source.locale === "ar" ? "بدون عنوان" : "Sans titre")).trim();
@@ -60,6 +62,7 @@ async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
       topicKey,
       locale: source.locale,
       independentMedia,
+      sourceKind,
     };
   });
 }

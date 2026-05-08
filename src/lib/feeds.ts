@@ -1,5 +1,7 @@
 export type FeedLocale = "ar" | "fr";
 
+export type FeedKind = "independent" | "state" | "major" | "radio" | "journalist";
+
 export type FeedSource = {
   id: string;
   label: string;
@@ -7,6 +9,8 @@ export type FeedSource = {
   url: string;
   /** Language of the feed / edition (for grouping in the UI). */
   locale: FeedLocale;
+  /** Type of outlet (for badges / filtering / transparency). */
+  kind?: FeedKind;
   /** Shown first in the feed; order within this group is shuffled on each refresh. */
   independentMedia?: boolean;
 };
@@ -22,6 +26,7 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     label: "أخبار تونس (مجمّع)",
     url: `https://news.google.com/rss/search?q=${encodeURIComponent("تونس")}&hl=ar&gl=TN&ceid=TN%3Aar`,
     locale: "ar",
+    kind: "major",
   },
   // Official portal (e.g. /ar/الرائد_الرسمي) — no stable public RSS; aggregate via Google News by host.
   {
@@ -29,42 +34,49 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     label: "الرائد الرسمي — قرطاج",
     url: "https://news.google.com/rss/search?q=site%3Awww.carthage.tn&hl=ar&gl=TN&ceid=TN%3Aar",
     locale: "ar",
+    kind: "state",
   },
   {
     id: "aljazeera-tunisia-ar",
     label: "الجزيرة — تونس",
     url: `https://news.google.com/rss/search?q=${encodeURIComponent("site:aljazeera.net تونس")}&hl=ar&gl=TN&ceid=TN%3Aar`,
     locale: "ar",
+    kind: "major",
   },
   {
     id: "mosaique-ar",
     label: "موزاييك أف أم — العربية",
     url: "https://news.google.com/rss/search?q=site%3Amosaiquefm.net&hl=ar&gl=TN&ceid=TN%3Aar",
     locale: "ar",
+    kind: "radio",
   },
   {
     id: "diwan-ar",
     label: "ديوان أف أم",
     url: "https://news.google.com/rss/search?q=site%3Adiwanfm.net&hl=ar&gl=TN&ceid=TN%3Aar",
     locale: "ar",
+    kind: "radio",
   },
   {
     id: "jawhara-ar",
     label: "جوهرة أف أم",
     url: "https://news.google.com/rss/search?q=site%3Ajawharafm.net&hl=ar&gl=TN&ceid=TN%3Aar",
     locale: "ar",
+    kind: "radio",
   },
   {
     id: "express-ar",
     label: "اكسبريس أف أم",
     url: "https://news.google.com/rss/search?q=site%3Aexpressfm.tn&hl=ar&gl=TN&ceid=TN%3Aar",
     locale: "ar",
+    kind: "radio",
   },
   {
     id: "shems-ar",
     label: "شمس أف أم",
     url: "https://news.google.com/rss/search?q=site%3Ashemsfm.net&hl=ar&gl=TN&ceid=TN%3Aar",
     locale: "ar",
+    kind: "radio",
   },
   // nawaat.org — independent Tunisia-focused journalism (feed may mix ar/fr/en).
   {
@@ -73,6 +85,7 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     url: "https://nawaat.org/feed/",
     locale: "ar",
     independentMedia: true,
+    kind: "independent",
   },
   // alqatiba.com — investigative Arabic journalism.
   {
@@ -81,6 +94,7 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     url: "https://alqatiba.com/feed/",
     locale: "ar",
     independentMedia: true,
+    kind: "independent",
   },
   // rassdtunisia.net — Tunisian news outlet.
   {
@@ -89,6 +103,7 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     url: "https://rassdtunisia.net/feed/",
     locale: "ar",
     independentMedia: true,
+    kind: "independent",
   },
   // ——— French ———
   {
@@ -96,17 +111,20 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     label: "Business News",
     url: "https://www.businessnews.com.tn/rss",
     locale: "fr",
+    kind: "major",
   },
   {
     id: "google-tunisia-fr",
     label: "Actualités Tunisie (agrégé)",
     url: "https://news.google.com/rss/search?q=Tunisie&hl=fr&gl=TN&ceid=TN%3Afr",
     locale: "fr",
+    kind: "major",
   },
   {
     id: "webdo-fr",
     label: "Webdo.tn",
     url: "https://news.google.com/rss/search?q=site%3Awebdo.tn&hl=fr&gl=TN&ceid=TN%3Afr",
     locale: "fr",
+    kind: "major",
   },
 ];
