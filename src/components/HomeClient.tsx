@@ -371,7 +371,7 @@ export function HomeClient() {
       <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-12">
           <div dir="rtl" lang="ar">
-            <h2 className="mb-4 text-2xl font-bold text-white">أخبار تونس بالعربية</h2>
+            <h2 className="mb-4 text-2xl font-bold text-white">{`أخبار ${activeCountry.label}`}</h2>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {arabic.map((a) => (
                 <li key={a.id}>
