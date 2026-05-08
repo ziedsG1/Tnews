@@ -5,6 +5,8 @@ export type CountryId = "TN" | "DZ" | "MA" | "FR" | "US";
 
 export type CountryConfig = {
   id: CountryId;
+  /** Brand text shown in header (e.g. Tnews, DZnews). */
+  brand: string;
   label: string;
   /** Default UI/search language hint. */
   primaryLocale: FeedLocale;
@@ -26,12 +28,14 @@ function feed(id: string, label: string, url: string, locale: FeedLocale, kind: 
 export const COUNTRIES: CountryConfig[] = [
   {
     id: "TN",
+    brand: "Tnews",
     label: "Tunisia · تونس",
     primaryLocale: "ar",
     feeds: DEFAULT_FEEDS,
   },
   {
     id: "DZ",
+    brand: "DZnews",
     label: "Algeria · الجزائر",
     primaryLocale: "ar",
     feeds: [
@@ -43,6 +47,7 @@ export const COUNTRIES: CountryConfig[] = [
   },
   {
     id: "MA",
+    brand: "MAnews",
     label: "Morocco · المغرب",
     primaryLocale: "ar",
     feeds: [
@@ -54,6 +59,7 @@ export const COUNTRIES: CountryConfig[] = [
   },
   {
     id: "FR",
+    brand: "FRnews",
     label: "France · FR",
     primaryLocale: "fr",
     feeds: [
@@ -65,6 +71,7 @@ export const COUNTRIES: CountryConfig[] = [
   },
   {
     id: "US",
+    brand: "USnews",
     label: "United States · US",
     primaryLocale: "fr",
     feeds: [

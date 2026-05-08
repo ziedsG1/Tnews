@@ -214,6 +214,7 @@ export function HomeClient() {
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
   const [searchQuery, setSearchQuery] = useState("");
   const [country, setCountry] = useState<CountryId>("TN");
+  const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -300,26 +301,35 @@ export function HomeClient() {
         dir="ltr"
       >
         <div className="flex min-w-0 items-center gap-2">
-          <h1 className="shrink-0 bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-xl font-bold tracking-tight text-transparent sm:text-2xl">
-            Tnews
-          </h1>
+          <div className="relative">
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value as CountryId)}
+              aria-label="Country"
+              className="appearance-none rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 pr-9 text-xl font-bold tracking-tight text-slate-100 outline-none hover:border-white/25 sm:text-2xl"
+              style={{
+                WebkitTextFillColor: "transparent",
+                backgroundImage:
+                  "linear-gradient(90deg, rgba(255,255,255,1), rgba(241,245,249,1), rgba(148,163,184,1))",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+              }}
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.brand}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+              ▾
+            </span>
+          </div>
           <span className="truncate text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-400/85 sm:text-[11px]">
-            · تونس
+            · {activeCountry.label}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <select
-            value={country}
-            onChange={(e) => setCountry(e.target.value as CountryId)}
-            className="hidden rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[11px] text-slate-200 outline-none hover:border-white/25 sm:block"
-            aria-label="Country"
-          >
-            {COUNTRIES.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
           {data?.fetchedAt && (
             <span className="hidden max-w-[9rem] truncate text-[9px] text-slate-500 lg:inline">
               {new Intl.DateTimeFormat("fr-TN", {
