@@ -76,7 +76,8 @@ export const COUNTRIES: CountryConfig[] = [
     primaryLocale: "fr",
     feeds: [
       feed("gn-us-en", "Google News US", gnTopNews({ hl: "en", gl: "US", ceid: "US:en" }), "fr", "major"),
-      feed("ap", "AP News", "https://apnews.com/apf-topnews?output=rss", "fr", "major"),
+      // AP RSS frequently breaks XML parsing; use Google News scoped to apnews.com instead.
+      feed("ap-gn", "AP News (via Google News)", gnSearch("site:apnews.com", { hl: "en", gl: "US", ceid: "US:en" }), "fr", "major"),
       feed("propublica", "ProPublica", "https://www.propublica.org/feeds/propublica/main", "fr", "independent"),
       feed("npr", "NPR (radio)", "https://feeds.npr.org/1001/rss.xml", "fr", "radio"),
     ],

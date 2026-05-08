@@ -368,19 +368,6 @@ export function HomeClient() {
         </div>
       )}
 
-      {data?.errors && data.errors.length > 0 && (
-        <details className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/90">
-          <summary className="cursor-pointer font-medium">Certaines sources n&apos;ont pas répondu</summary>
-          <ul className="mt-2 list-inside list-disc text-xs text-amber-200/80">
-            {data.errors.map((e) => (
-              <li key={e.sourceId}>
-                <code className="text-amber-300">{e.sourceId}</code> — {e.message}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
       <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-12">
           <div dir="rtl" lang="ar">
