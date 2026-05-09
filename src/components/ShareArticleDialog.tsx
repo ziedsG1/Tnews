@@ -33,6 +33,87 @@ function canvasBackgroundForTheme(theme: ThemeMode): string {
   return "#fffdf5";
 }
 
+/** Same-origin data URI — drawing it never taints the export canvas. */
+const HTML2CANVAS_BLANK_PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+/**
+ * RSS hero images are cross-origin; html2canvas may still produce a tainted canvas, so
+ * `toDataURL` / `toBlob` throw. We swap remote bitmaps only inside html2canvas's cloned DOM.
+ */
+function stripRemoteRasterImagesInClone(rootOnPage: HTMLElement, clonedDoc: Document): void {
+  const origList = [...rootOnPage.querySelectorAll("img")];
+  const cloneList = [...clonedDoc.querySelectorAll("img")];
+  const n = Math.min(origList.length, cloneList.length);
+  for (let i = 0; i < n; i++) {
+    const o = origList[i] as HTMLImageElement;
+    const c = cloneList[i] as HTMLImageElement;
+    c.removeAttribute("crossorigin");
+    let remote = false;
+    try {
+      const u = new URL(o.currentSrc || o.src || "", window.location.href);
+      remote =
+        (u.protocol === "http:" || u.protocol === "https:") && u.origin !== window.location.origin;
+    } catch {
+      remote = Boolean(o.src);
+    }
+    if (!remote) continue;
+    try {
+      const r = o.getBoundingClientRect();
+      if (r.width >= 4 && r.height >= 4) {
+        c.style.width = `${Math.round(r.width)}px`;
+        c.style.height = `${Math.round(r.height)}px`;
+        c.style.objectFit = "cover";
+      }
+    } catch {
+      /* ignore */
+    }
+    c.src = HTML2CANVAS_BLANK_PIXEL;
+    c.removeAttribute("srcset");
+  }
+}
+
+function canvasCannotExportPng(canvas: HTMLCanvasElement): boolean {
+  try {
+    canvas.toDataURL("image/png", 0.92);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** Used for PDF + system share image; retries when the canvas is tainted or capture throws. */
+async function captureSharePreviewToCanvas(root: HTMLElement, backgroundColor: string): Promise<HTMLCanvasElement> {
+  const { default: html2canvas } = await import("html2canvas");
+  const baseOpts = {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    backgroundColor,
+  };
+  const stripOpts = {
+    ...baseOpts,
+    onclone: (clonedDoc: Document) => {
+      stripRemoteRasterImagesInClone(root, clonedDoc);
+    },
+  };
+
+  let canvas: HTMLCanvasElement;
+  try {
+    canvas = await html2canvas(root, baseOpts);
+  } catch {
+    canvas = await html2canvas(root, stripOpts);
+  }
+  if (canvasCannotExportPng(canvas)) {
+    const retry = await html2canvas(root, stripOpts);
+    if (canvasCannotExportPng(retry)) {
+      throw new Error("ShareExportTainted");
+    }
+    return retry;
+  }
+  return canvas;
+}
+
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
 function splitSummaryForColumns(text: string | null, rtl: boolean): [string, string] {
   if (!text) return ["", ""];
@@ -625,13 +706,7 @@ export function ShareArticleDialog({
         if (typeof document !== "undefined" && document.fonts?.ready) {
           await document.fonts.ready;
         }
-        const { default: html2canvas } = await import("html2canvas");
-        const canvas = await html2canvas(el, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: canvasBackgroundForTheme(captureTheme),
-        });
+        const canvas = await captureSharePreviewToCanvas(el, canvasBackgroundForTheme(captureTheme));
         const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.92));
         if (blob && typeof navigator.canShare === "function") {
           const baseName =
@@ -667,18 +742,8 @@ export function ShareArticleDialog({
       if (typeof document !== "undefined" && document.fonts?.ready) {
         await document.fonts.ready;
       }
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf"),
-      ]);
+      const { default: jsPDF } = await import("jspdf");
       const bg = canvasBackgroundForTheme(captureTheme);
-      const h2c = (node: HTMLElement) =>
-        html2canvas(node, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: bg,
-        });
 
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
@@ -703,7 +768,7 @@ export function ShareArticleDialog({
 
       const el = previewRef.current;
       if (!el) return false;
-      const canvas = await h2c(el);
+      const canvas = await captureSharePreviewToCanvas(el, bg);
       placeOnPage(canvas, 0);
 
       const baseName =
