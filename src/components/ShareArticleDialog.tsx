@@ -92,11 +92,12 @@ function SharePreview({
   const rtl = article.locale === "ar";
   const headline = article.translatedTitle ?? article.title;
   const dateStr = formatShareDate(article.pubDate, article.locale);
+  const ar = rtl ? "share-preview-ar" : "";
 
   if (captureTheme === "broadsheet") {
     return (
       <div
-        className="share-surface-broadsheet relative overflow-hidden rounded-sm border-[3px] border-double border-[#0c0806] bg-[#fdf6e8] p-4 text-[#0c0806] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)] sm:p-6"
+        className={`share-surface-broadsheet relative overflow-hidden rounded-sm border-[3px] border-double border-[#0c0806] bg-[#fdf6e8] p-4 text-[#0c0806] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)] sm:p-6 ${ar}`}
         dir={rtl ? "rtl" : "ltr"}
         lang={rtl ? "ar" : "fr"}
       >
@@ -111,7 +112,7 @@ function SharePreview({
         </div>
         <div className="relative">
           <p
-            className="text-center text-[1.85rem] leading-[0.95] tracking-tight text-[#8b1538] sm:text-[2.35rem]"
+            className="share-site-latin text-center text-[1.85rem] leading-[0.95] tracking-tight text-[#8b1538] sm:text-[2.35rem]"
             style={{ fontFamily: "var(--font-heritage-display), UnifrakturMaguntia, serif" }}
           >
             {siteLabel}
@@ -122,16 +123,24 @@ function SharePreview({
           <div className="my-3 h-px bg-[#0c0806]" />
           <div className="my-2 h-0.5 bg-[#0c0806]" />
           <h2
-            className="text-balance text-center text-[1.05rem] font-bold leading-snug sm:text-[1.2rem]"
-            style={{ fontFamily: "var(--font-heritage-serif), Georgia, 'Times New Roman', serif" }}
+            className={`text-balance text-center text-[1.05rem] font-bold leading-snug sm:text-[1.2rem] ${!rtl ? "share-heritage-body" : ""}`}
+            style={
+              !rtl
+                ? { fontFamily: "var(--font-heritage-serif), Georgia, 'Times New Roman', serif" }
+                : undefined
+            }
           >
             {headline}
           </h2>
           <p className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-[#3d2f1f]">{dateStr}</p>
           {article.summary ? (
             <div
-              className="mt-4 gap-x-5 text-[11px] leading-[1.55] sm:columns-3 sm:text-[10.5px]"
-              style={{ fontFamily: "var(--font-heritage-serif), Georgia, 'Times New Roman', serif" }}
+              className={`mt-4 gap-x-5 text-[11px] leading-[1.55] sm:columns-3 sm:text-[10.5px] ${!rtl ? "share-heritage-body" : ""}`}
+              style={
+                !rtl
+                  ? { fontFamily: "var(--font-heritage-serif), Georgia, 'Times New Roman', serif" }
+                  : undefined
+              }
             >
               <p className="text-justify">{article.summary}</p>
             </div>
@@ -139,7 +148,7 @@ function SharePreview({
           <div className="mt-5 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-[#3d2f1f] sm:text-[10px]">
             {article.topic}
           </div>
-          <p className="mt-3 text-center text-[8px] uppercase tracking-[0.25em] text-[#5c4a3a]">{siteLabel}</p>
+          <p className="share-site-latin mt-3 text-center text-[8px] uppercase tracking-[0.25em] text-[#5c4a3a]">{siteLabel}</p>
         </div>
       </div>
     );
@@ -148,7 +157,7 @@ function SharePreview({
   if (captureTheme === "newspaper") {
     return (
       <div
-        className="rounded-sm border-[1px] border-b-[3px] border-[#3d2f1f] bg-[#fffdf5] p-5 text-[#1a120c] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
+        className={`rounded-sm border-[1px] border-b-[3px] border-[#3d2f1f] bg-[#fffdf5] p-5 text-[#1a120c] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${ar}`}
         dir={rtl ? "rtl" : "ltr"}
         lang={rtl ? "ar" : "fr"}
       >
@@ -157,9 +166,11 @@ function SharePreview({
         </p>
         <p className="mt-1 text-center text-[10px] font-semibold text-[#6b5344]">{article.sourceLabel}</p>
         <hr className="my-3 border-[#3d2f1f]/40" />
-        <h2 className="text-center font-serif text-lg font-bold leading-snug">{headline}</h2>
+        <h2 className={`text-center text-lg font-bold leading-snug ${rtl ? "" : "font-serif"}`}>{headline}</h2>
         <p className="theme-muted mt-2 text-center text-[11px]">{dateStr}</p>
-        {article.summary ? <p className="mt-3 text-justify font-serif text-sm leading-relaxed text-[#3d2f1f]">{article.summary}</p> : null}
+        {article.summary ? (
+          <p className={`mt-3 text-justify text-sm leading-relaxed text-[#3d2f1f] ${rtl ? "" : "font-serif"}`}>{article.summary}</p>
+        ) : null}
         <p className="mt-3 text-center text-[10px] uppercase text-[#6b5344]">{article.topic}</p>
       </div>
     );
@@ -168,7 +179,7 @@ function SharePreview({
   if (captureTheme === "light") {
     return (
       <div
-        className="rounded-xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm"
+        className={`rounded-xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm ${ar}`}
         dir={rtl ? "rtl" : "ltr"}
         lang={rtl ? "ar" : "fr"}
       >
@@ -186,7 +197,7 @@ function SharePreview({
   // dark
   return (
     <div
-      className="rounded-xl border border-white/15 bg-[#0b0d14] p-5 text-slate-100 shadow-[0_0_0_1px_rgba(255,255,255,0.06)]"
+      className={`rounded-xl border border-white/15 bg-[#0b0d14] p-5 text-slate-100 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] ${ar}`}
       dir={rtl ? "rtl" : "ltr"}
       lang={rtl ? "ar" : "fr"}
     >
@@ -202,14 +213,14 @@ function SharePreview({
 }
 
 export function ShareArticleDialog({
-  article,
+  articles,
   siteLabel,
   captureTheme,
   uiLang,
   onClose,
   autoExecute,
 }: {
-  article: NewsArticle;
+  articles: NewsArticle[];
   siteLabel: string;
   captureTheme: ThemeMode;
   uiLang: "ar" | "fr" | "en";
@@ -218,11 +229,14 @@ export function ShareArticleDialog({
   autoExecute?: "story" | "pdf";
 }) {
   const previewRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [narrow, setNarrow] = useState(false);
   const [autoBusy, setAutoBusy] = useState(Boolean(autoExecute));
   const labels = LABELS[uiLang];
+
+  sectionRefs.current.length = articles.length;
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 640px)");
@@ -245,8 +259,14 @@ export function ShareArticleDialog({
       setErr(labels.shareUnavailable);
       return false;
     }
-    const headline = article.translatedTitle ?? article.title;
-    const text = [article.sourceLabel, article.summary].filter(Boolean).join("\n\n");
+    const headline = articles
+      .map((a) => a.translatedTitle ?? a.title)
+      .join(" · ")
+      .slice(0, 200);
+    const text = articles
+      .map((a) => [a.sourceLabel, a.summary].filter(Boolean).join("\n"))
+      .join("\n\n")
+      .slice(0, 4000);
     const el = previewRef.current;
     try {
       if (el) {
@@ -262,7 +282,9 @@ export function ShareArticleDialog({
         });
         const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.92));
         if (blob && typeof navigator.canShare === "function") {
-          const file = new File([blob], `${slugFilename(headline)}.png`, { type: "image/png" });
+          const baseName =
+            articles.length > 1 ? `tnews-selection-${articles.length}` : slugFilename(articles[0]!.translatedTitle ?? articles[0]!.title);
+          const file = new File([blob], `${baseName}.png`, { type: "image/png" });
           if (navigator.canShare({ files: [file] })) {
             await navigator.share({
               files: [file],
@@ -276,7 +298,7 @@ export function ShareArticleDialog({
       await navigator.share({
         title: headline,
         text: text || headline,
-        url: article.link,
+        url: articles[0]?.link,
       });
       return true;
     } catch (e) {
@@ -284,11 +306,9 @@ export function ShareArticleDialog({
       setErr(labels.shareUnavailable);
       return false;
     }
-  }, [article, canShare, captureTheme, labels.shareUnavailable]);
+  }, [articles, canShare, captureTheme, labels.shareUnavailable]);
 
   const handlePdf = useCallback(async (): Promise<boolean> => {
-    const el = previewRef.current;
-    if (!el) return false;
     setErr(null);
     setPdfBusy(true);
     try {
@@ -299,29 +319,55 @@ export function ShareArticleDialog({
         import("html2canvas"),
         import("jspdf"),
       ]);
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: canvasBackgroundForTheme(captureTheme),
-      });
-      const imgData = canvas.toDataURL("image/png", 0.92);
+      const bg = canvasBackgroundForTheme(captureTheme);
+      const h2c = (node: HTMLElement) =>
+        html2canvas(node, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: bg,
+        });
+
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
       const margin = 12;
       const maxW = pageW - margin * 2;
       const maxH = pageH - margin * 2;
-      let w = maxW;
-      let h = (canvas.height * w) / canvas.width;
-      if (h > maxH) {
-        h = maxH;
-        w = (canvas.width * h) / canvas.height;
+
+      const placeOnPage = (canvas: HTMLCanvasElement, pageIndex: number) => {
+        const imgData = canvas.toDataURL("image/png", 0.92);
+        if (pageIndex > 0) pdf.addPage();
+        let w = maxW;
+        let h = (canvas.height * w) / canvas.width;
+        if (h > maxH) {
+          h = maxH;
+          w = (canvas.width * h) / canvas.height;
+        }
+        const x = (pageW - w) / 2;
+        const y = margin;
+        pdf.addImage(imgData, "PNG", x, y, w, h);
+      };
+
+      if (articles.length === 1) {
+        const el = previewRef.current;
+        if (!el) return false;
+        const canvas = await h2c(el);
+        placeOnPage(canvas, 0);
+      } else {
+        for (let i = 0; i < articles.length; i++) {
+          const section = sectionRefs.current[i];
+          if (!section) return false;
+          const canvas = await h2c(section);
+          placeOnPage(canvas, i);
+        }
       }
-      const x = (pageW - w) / 2;
-      const y = margin;
-      pdf.addImage(imgData, "PNG", x, y, w, h);
-      pdf.save(`${slugFilename(article.translatedTitle ?? article.title)}.pdf`);
+
+      const baseName =
+        articles.length > 1
+          ? `tnews-selection-${articles.length}`
+          : slugFilename(articles[0]!.translatedTitle ?? articles[0]!.title);
+      pdf.save(`${baseName}.pdf`);
       return true;
     } catch {
       setErr(labels.pdfFail);
@@ -329,7 +375,7 @@ export function ShareArticleDialog({
     } finally {
       setPdfBusy(false);
     }
-  }, [article, captureTheme, labels.pdfFail]);
+  }, [articles, captureTheme, labels.pdfFail]);
 
   const autoStarted = useRef(false);
   useEffect(() => {
@@ -396,8 +442,18 @@ export function ShareArticleDialog({
             </button>
           </div>
 
-          <div ref={previewRef} className="rounded-lg">
-            <SharePreview article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
+          <div ref={previewRef} className="flex flex-col gap-6 rounded-lg">
+            {articles.map((art, i) => (
+              <div
+                key={art.id}
+                ref={(el) => {
+                  sectionRefs.current[i] = el;
+                }}
+                className={articles.length > 1 ? "share-pdf-section rounded-lg" : "rounded-lg"}
+              >
+                <SharePreview article={art} siteLabel={siteLabel} captureTheme={captureTheme} />
+              </div>
+            ))}
           </div>
 
           {err && <p className="mt-3 text-center text-sm text-red-400">{err}</p>}

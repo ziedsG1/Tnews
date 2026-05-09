@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Newsreader, UnifrakturMaguntia } from "next/font/google";
+import { Newsreader, Noto_Sans_Arabic, UnifrakturMaguntia } from "next/font/google";
 import "./globals.css";
 
 const heritageDisplay = UnifrakturMaguntia({
@@ -16,6 +16,14 @@ const heritageSerif = Newsreader({
   display: "swap",
 });
 
+/** Arabic shaping for UI, share preview, and html2canvas → PDF rasterization. */
+const arabicUi = Noto_Sans_Arabic({
+  subsets: ["arabic", "latin"],
+  weight: ["400", "600", "700"],
+  variable: "--font-arabic-ui",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Tnews — Tunisie & monde en 3D",
   description:
@@ -28,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className={`${heritageDisplay.variable} ${heritageSerif.variable}`}>
+    <html lang="fr" className={`${heritageDisplay.variable} ${heritageSerif.variable} ${arabicUi.variable}`}>
       <body className="min-h-screen antialiased">{children}</body>
     </html>
   );

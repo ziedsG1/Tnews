@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
@@ -158,7 +158,7 @@ function ArticleCard({
   onShareDoubleClick,
 }: {
   article: NewsArticle;
-  onSelect: () => void;
+  onSelect: (e: MouseEvent<HTMLButtonElement>) => void;
   active: boolean;
   onShareDoubleClick?: () => void;
 }) {
@@ -175,12 +175,20 @@ function ArticleCard({
       }}
       dir={rtl ? "rtl" : "ltr"}
       lang={rtl ? "ar" : "fr"}
-      className={`w-full rounded-xl border p-4 text-start transition ${
+      className={`relative w-full rounded-xl border p-4 pt-7 text-start transition sm:pt-4 ${
         active
-          ? "theme-card theme-card-active border-rose-400/60 bg-rose-500/10"
+          ? "theme-card theme-card-active border-rose-400/60 bg-rose-500/10 ring-2 ring-emerald-400/40"
           : "theme-card border-white/10 bg-white/[0.02] hover:border-emerald-400/35 hover:bg-white/[0.05]"
       }`}
     >
+      <span
+        className={`absolute left-3 top-2 flex h-4 w-4 items-center justify-center rounded border text-[9px] font-bold sm:left-auto sm:right-3 ${rtl ? "left-auto right-3" : ""} ${
+          active ? "border-emerald-400 bg-emerald-500/30 text-emerald-100" : "border-white/25 bg-black/20 text-transparent"
+        }`}
+        aria-hidden
+      >
+        ✓
+      </span>
       <span className="flex flex-wrap items-center gap-1.5">
         {article.independentMedia && (
           <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">
@@ -225,14 +233,15 @@ export function HomeClient() {
   const [data, setData] = useState<ApiPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [selected, setSelected] = useState<NewsArticle | null>(null);
+  /** Selection order: last id is the “primary” article in the sidebar. Ctrl/Cmd+click toggles multi-select. */
+  const [selectedOrder, setSelectedOrder] = useState<string[]>([]);
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
   const [searchQuery, setSearchQuery] = useState("");
   const [country, setCountry] = useState<CountryId>("TN");
   const [uiLang, setUiLang] = useState<UiLang>("ar");
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [shareTarget, setShareTarget] = useState<{
-    article: NewsArticle;
+    articles: NewsArticle[];
     theme: ThemeMode;
     autoExecute?: "story" | "pdf";
   } | null>(null);
@@ -296,33 +305,39 @@ export function HomeClient() {
     const byLang = {
       ar: {
         searchPlaceholder: "بحث / Search",
-        shareHint: "انقر مرتين على بطاقة لمشاركتها (قصة أو PDF) بنفس النمط.",
+        shareHint: "انقر للتحديد — Ctrl أو ⌘ مع النقر لإضافة أكثر من خبر. نقرتان: مشاركة (قصة / PDF).",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
-        selectedTitle: "المقال المحدد",
-        selectHint: "اختر خبراً من القائمة.",
+        selectedTitle: "المحدد",
+        selectHint: "انقر بطاقة للتحديد. Ctrl/⌘+نقر لتحديد عدة أخبار.",
+        pdfBundle: "PDF للمحدد",
+        clearSelection: "مسح التحديد",
         sourceLink: "المصدر الأصلي ↗",
         newsTitle: `أخبار ${activeCountry.names.ar}`,
         intlTitle: "أخبار دولية",
       },
       fr: {
         searchPlaceholder: "Recherche / Search",
-        shareHint: "Double-cliquez une carte pour partager (Story sur mobile, PDF) dans le thème actuel.",
+        shareHint: "Clic pour sélectionner — Ctrl ou ⌘+clic pour multi-sélection. Double-clic : partage (Story / PDF).",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
-        selectedTitle: "Article sélectionné",
-        selectHint: "Choisissez un article dans les grilles.",
+        selectedTitle: "Sélection",
+        selectHint: "Cliquez une carte. Ctrl/⌘+clic pour en choisir plusieurs.",
+        pdfBundle: "PDF sélection",
+        clearSelection: "Effacer la sélection",
         sourceLink: "Lire sur le site d'origine ↗",
         newsTitle: `Actualités ${activeCountry.names.fr}`,
         intlTitle: "Actualités internationales",
       },
       en: {
         searchPlaceholder: "Search / بحث",
-        shareHint: "Double-click a card to share as Story (phone) or PDF, styled like your current theme.",
+        shareHint: "Click to select — Ctrl or ⌘+click for multi-select. Double-click: share (Story / PDF).",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
-        selectedTitle: "Selected article",
-        selectHint: "Choose an article from the grid.",
+        selectedTitle: "Selection",
+        selectHint: "Click a card. Ctrl/⌘+click to pick several articles.",
+        pdfBundle: "PDF of selection",
+        clearSelection: "Clear selection",
         sourceLink: "Read on original source ↗",
         newsTitle: `${activeCountry.names.en} news`,
         intlTitle: "International news",
@@ -362,11 +377,45 @@ export function HomeClient() {
     };
   }, [searchedArticles]);
 
+  const selectedArticlesList = useMemo(() => {
+    const map = new Map(searchedArticles.map((a) => [a.id, a]));
+    return selectedOrder.map((id) => map.get(id)).filter(Boolean) as NewsArticle[];
+  }, [selectedOrder, searchedArticles]);
+
+  const primaryArticle = useMemo(() => {
+    if (selectedArticlesList.length === 0) return null;
+    return selectedArticlesList[selectedArticlesList.length - 1] ?? null;
+  }, [selectedArticlesList]);
+
+  const selectedSet = useMemo(() => new Set(selectedOrder), [selectedOrder]);
+
+  const selectArticle = useCallback((e: MouseEvent<HTMLButtonElement>, article: NewsArticle) => {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedOrder((prev) => {
+        if (prev.includes(article.id)) return prev.filter((id) => id !== article.id);
+        return [...prev, article.id];
+      });
+    } else {
+      setSelectedOrder([article.id]);
+    }
+  }, []);
+
+  const openShareBundle = useCallback(() => {
+    const list = selectedArticlesList.slice(0, 15);
+    if (list.length === 0) return;
+    const w = typeof window !== "undefined" ? window.innerWidth : 1024;
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const phoneLike =
+      w <= 768 && /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry/i.test(ua);
+    const autoExecute: "story" | "pdf" | undefined = phoneLike ? undefined : "pdf";
+    setShareTarget({ articles: list, theme, autoExecute });
+  }, [selectedArticlesList, theme]);
+
   const toggleFilterGroup = useCallback((id: TopicFilterGroup) => {
     setFilterGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  const selRtl = selected?.locale === "ar";
+  const selRtl = primaryArticle?.locale === "ar";
 
   const brandSelectClass = useMemo(() => {
     const base =
@@ -414,7 +463,7 @@ export function HomeClient() {
         ? "story"
         : undefined
       : "pdf";
-    setShareTarget({ article, theme, autoExecute });
+    setShareTarget({ articles: [article], theme, autoExecute });
   }, [theme]);
 
   return (
@@ -523,8 +572,8 @@ export function HomeClient() {
                 <li key={a.id}>
                   <ArticleCard
                     article={a}
-                    onSelect={() => setSelected((prev) => (prev?.id === a.id ? null : a))}
-                    active={selected?.id === a.id}
+                    onSelect={(e) => selectArticle(e, a)}
+                    active={selectedSet.has(a.id)}
                     onShareDoubleClick={() => openShare(a)}
                   />
                 </li>
@@ -543,8 +592,8 @@ export function HomeClient() {
                 <li key={a.id}>
                   <ArticleCard
                     article={a}
-                    onSelect={() => setSelected((prev) => (prev?.id === a.id ? null : a))}
-                    active={selected?.id === a.id}
+                    onSelect={(e) => selectArticle(e, a)}
+                    active={selectedSet.has(a.id)}
                     onShareDoubleClick={() => openShare(a)}
                   />
                 </li>
@@ -564,21 +613,46 @@ export function HomeClient() {
           >
             <h2 className="theme-headline text-lg font-semibold text-white">
               {t.selectedTitle}
+              {selectedOrder.length > 0 ? (
+                <span className="theme-muted ms-2 text-sm font-normal">({selectedOrder.length})</span>
+              ) : null}
             </h2>
-            {!selected && (
+            {selectedOrder.length === 0 && (
               <p className="theme-muted mt-2 text-sm text-slate-500">
                 {t.selectHint}
               </p>
             )}
-            {!selected && (
-              <p className="theme-muted mt-2 text-sm text-slate-600" dir="rtl" lang="ar">
-                أو بالعربية: اضغط على أي بطاقة.
-              </p>
+            {selectedOrder.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2" dir="ltr">
+                <button
+                  type="button"
+                  onClick={() => openShareBundle()}
+                  className="rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-md transition hover:brightness-110"
+                >
+                  {t.pdfBundle}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder([])}
+                  className="theme-mode-toggle rounded-lg px-3 py-1.5 text-[11px] font-semibold"
+                >
+                  {t.clearSelection}
+                </button>
+              </div>
             )}
-            {selected && (
+            {selectedOrder.length > 1 && (
+              <ul className="theme-muted mt-3 max-h-32 space-y-1 overflow-y-auto text-[11px] leading-snug">
+                {selectedArticlesList.map((a) => (
+                  <li key={a.id} className="truncate border-b border-white/5 pb-1" dir={a.locale === "ar" ? "rtl" : "ltr"} lang={a.locale === "ar" ? "ar" : "fr"}>
+                    {a.translatedTitle ?? a.title}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {primaryArticle && (
               <div className="mt-4 flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  {selected.independentMedia && (
+                  {primaryArticle.independentMedia && (
                     <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100">
                       Média indépendant
                     </span>
@@ -590,24 +664,24 @@ export function HomeClient() {
                         : "border border-rose-400/40 bg-rose-500/15 text-rose-100"
                     }`}
                   >
-                    {selected.topic}
+                    {primaryArticle.topic}
                   </span>
                 </div>
                 <p className="theme-headline text-base font-medium leading-snug text-white">
-                  {selected.translatedTitle ?? selected.title}
+                  {primaryArticle.translatedTitle ?? primaryArticle.title}
                 </p>
-                <p className="theme-muted text-xs uppercase tracking-wide text-slate-500">{selected.sourceLabel}</p>
+                <p className="theme-muted text-xs uppercase tracking-wide text-slate-500">{primaryArticle.sourceLabel}</p>
                 <time
-                  dateTime={selected.pubDate ?? undefined}
+                  dateTime={primaryArticle.pubDate ?? undefined}
                   className="theme-muted text-[11px] text-slate-400"
                 >
-                  {formatCardDate(selected.pubDate, selected.locale)}
+                  {formatCardDate(primaryArticle.pubDate, primaryArticle.locale)}
                 </time>
-                {selected.summary && (
-                  <p className="theme-muted text-sm leading-relaxed text-slate-400">{selected.summary}</p>
+                {primaryArticle.summary && (
+                  <p className="theme-muted text-sm leading-relaxed text-slate-400">{primaryArticle.summary}</p>
                 )}
                 <a
-                  href={selected.link}
+                  href={primaryArticle.link}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex w-fit items-center gap-2 rounded-lg bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-300 ring-1 ring-sky-400/40 transition hover:bg-sky-500/25"
@@ -660,7 +734,7 @@ export function HomeClient() {
 
       {shareTarget ? (
         <ShareArticleDialog
-          article={shareTarget.article}
+          articles={shareTarget.articles}
           siteLabel={activeCountry.brand}
           captureTheme={shareTarget.theme}
           uiLang={uiLang}

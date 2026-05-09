@@ -74,6 +74,7 @@ body {
   color: var(--text);
   background: radial-gradient(ellipse 120% 80% at 50% -20%, #1a1528 0%, var(--bg-deep) 45%);
   font-family:
+    var(--font-arabic-ui),
     system-ui,
     "Segoe UI",
     Roboto,
@@ -82,6 +83,19 @@ body {
     "Noto Sans Arabic",
     "Noto Sans",
     sans-serif;
+}
+
+/* Share / PDF capture: Arabic shaping (html2canvas rasterizes DOM fonts). */
+.share-preview-ar {
+  font-family: var(--font-arabic-ui), "Noto Sans Arabic", Tahoma, "Segoe UI", sans-serif;
+}
+
+.share-site-latin {
+  font-family: var(--font-heritage-display), UnifrakturMaguntia, "Times New Roman", serif !important;
+}
+
+.share-heritage-body {
+  font-family: var(--font-heritage-serif), Georgia, "Times New Roman", serif;
 }
 
 html[data-theme="light"] body {
