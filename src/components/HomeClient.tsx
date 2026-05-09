@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
 type ThemeMode = "dark" | "light" | "newspaper";
@@ -351,26 +352,53 @@ export function HomeClient() {
 
   const selRtl = selected?.locale === "ar";
 
+  const brandSelectClass = useMemo(() => {
+    const base =
+      "appearance-none rounded-full border px-4 py-1.5 pr-9 text-xl font-bold tracking-tight outline-none sm:text-2xl";
+    if (theme === "light") {
+      return `${base} border-slate-200/90 bg-white/95 text-slate-900 shadow-sm hover:border-slate-300`;
+    }
+    if (theme === "newspaper") {
+      return `${base} brand-select-newspaper rounded-sm border-2 border-[#3d2f1f] bg-[#fffdf5] px-4 py-1.5 pr-9 font-serif text-[1.15rem] font-extrabold tracking-tight text-[#1a120c] shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_2px_0_rgba(61,47,31,0.35)] sm:text-2xl`;
+    }
+    return `${base} border-white/15 bg-white/[0.06] text-slate-100 hover:border-white/25`;
+  }, [theme]);
+
+  const brandSelectStyle = useMemo((): CSSProperties | undefined => {
+    if (theme !== "dark") return undefined;
+    return {
+      WebkitTextFillColor: "transparent",
+      backgroundImage:
+        "linear-gradient(90deg, rgba(255,255,255,1), rgba(241,245,249,1), rgba(148,163,184,1))",
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+    };
+  }, [theme]);
+
+  const chevronClass =
+    theme === "newspaper"
+      ? "text-[#6b5344]"
+      : theme === "light"
+        ? "text-slate-500"
+        : "text-slate-400";
+
   return (
-    <main className="relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8">
+    <main
+      className={`relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8 ${theme === "newspaper" ? "newspaper-main" : ""}`}
+    >
       <header
         className="theme-header sticky top-0 z-50 -mx-4 flex items-center justify-between gap-3 border-b border-white/10 bg-[#05060a]/88 px-4 py-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.85)] backdrop-blur-xl md:-mx-8 md:px-8"
         dir="ltr"
       >
         <div className="flex min-w-0 items-center gap-2">
+          <BrandLogo theme={theme} className="hidden sm:block" />
           <div className="relative">
             <select
               value={country}
               onChange={(e) => setCountry(e.target.value as CountryId)}
               aria-label="Country"
-              className="appearance-none rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 pr-9 text-xl font-bold tracking-tight text-slate-100 outline-none hover:border-white/25 sm:text-2xl"
-              style={{
-                WebkitTextFillColor: "transparent",
-                backgroundImage:
-                  "linear-gradient(90deg, rgba(255,255,255,1), rgba(241,245,249,1), rgba(148,163,184,1))",
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-              }}
+              className={brandSelectClass}
+              style={brandSelectStyle}
             >
               {COUNTRIES.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -378,7 +406,7 @@ export function HomeClient() {
                 </option>
               ))}
             </select>
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+            <span className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 ${chevronClass}`}>
               ▾
             </span>
           </div>
