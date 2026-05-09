@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
@@ -158,7 +158,7 @@ function ArticleCard({
   onShareDoubleClick,
 }: {
   article: NewsArticle;
-  onSelect: (e: MouseEvent<HTMLButtonElement>) => void;
+  onSelect: () => void;
   active: boolean;
   onShareDoubleClick?: () => void;
 }) {
@@ -166,7 +166,7 @@ function ArticleCard({
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => onSelect()}
       onDoubleClick={(e) => {
         if (onShareDoubleClick) {
           e.preventDefault();
@@ -233,8 +233,8 @@ export function HomeClient() {
   const [data, setData] = useState<ApiPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  /** Selection order: last id is the “primary” article in the sidebar. Ctrl/Cmd+click toggles multi-select. */
-  const [selectedOrder, setSelectedOrder] = useState<string[]>([]);
+  /** At most one selected article (sidebar + save image). */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
   const [searchQuery, setSearchQuery] = useState("");
   const [country, setCountry] = useState<CountryId>("TN");
@@ -305,12 +305,12 @@ export function HomeClient() {
     const byLang = {
       ar: {
         searchPlaceholder: "بحث / Search",
-        shareHint: "انقر للتحديد — Ctrl أو ⌘ مع النقر لإضافة أكثر من خبر. نقرتان مزدوجتان: تنزيل صورة المعاينة.",
+        shareHint: "انقر بطاقة لتحديد خبر واحد. نقرتان مزدوجتان: حفظ صورة المعاينة مباشرة.",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
         selectedTitle: "المحدد",
-        selectHint: "انقر بطاقة للتحديد. Ctrl/⌘+نقر لتحديد عدة أخبار.",
-        selectionPhoto: "صورة للمحدد",
+        selectHint: "انقر بطاقة لاختيار خبر واحد في الشريط الجانبي.",
+        selectionPhoto: "حفظ كصورة",
         clearSelection: "مسح التحديد",
         sourceLink: "المصدر الأصلي ↗",
         newsTitle: `أخبار ${activeCountry.names.ar}`,
@@ -318,12 +318,12 @@ export function HomeClient() {
       },
       fr: {
         searchPlaceholder: "Recherche / Search",
-        shareHint: "Clic pour sélectionner — Ctrl ou ⌘+clic pour multi-sélection. Double-clic : télécharger l’image d’aperçu.",
+        shareHint: "Cliquez une carte pour sélectionner un seul article. Double-clic : enregistrer l’image d’aperçu.",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
         selectedTitle: "Sélection",
-        selectHint: "Cliquez une carte. Ctrl/⌘+clic pour en choisir plusieurs.",
-        selectionPhoto: "Image de la sélection",
+        selectHint: "Cliquez une carte pour afficher un article dans la colonne de droite.",
+        selectionPhoto: "Enregistrer en image",
         clearSelection: "Effacer la sélection",
         sourceLink: "Lire sur le site d'origine ↗",
         newsTitle: `Actualités ${activeCountry.names.fr}`,
@@ -331,12 +331,12 @@ export function HomeClient() {
       },
       en: {
         searchPlaceholder: "Search / بحث",
-        shareHint: "Click to select — Ctrl or ⌘+click for multi-select. Double-click: download preview image.",
+        shareHint: "Click a card to select one article. Double-click: save preview image.",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
         selectedTitle: "Selection",
-        selectHint: "Click a card. Ctrl/⌘+click to pick several articles.",
-        selectionPhoto: "Selection image",
+        selectHint: "Click a card to show one article in the sidebar.",
+        selectionPhoto: "Save as image",
         clearSelection: "Clear selection",
         sourceLink: "Read on original source ↗",
         newsTitle: `${activeCountry.names.en} news`,
@@ -377,46 +377,32 @@ export function HomeClient() {
     };
   }, [searchedArticles]);
 
-  /**
-   * Resolve picks against topic-filtered articles only — not the search box.
-   * Otherwise a search that hides selected cards yields an empty list and
-   * “PDF للمحدد” / bundle share does nothing while selection ids still look active.
-   */
-  const selectedArticlesList = useMemo(() => {
-    const map = new Map(filteredArticles.map((a) => [a.id, a]));
-    return selectedOrder.map((id) => map.get(id)).filter(Boolean) as NewsArticle[];
-  }, [selectedOrder, filteredArticles]);
+  /** Topic-filtered article for sidebar; cleared if filters hide the selected card. */
+  const selectedArticle = useMemo(() => {
+    if (!selectedId) return null;
+    return filteredArticles.find((a) => a.id === selectedId) ?? null;
+  }, [selectedId, filteredArticles]);
 
-  const primaryArticle = useMemo(() => {
-    if (selectedArticlesList.length === 0) return null;
-    return selectedArticlesList[selectedArticlesList.length - 1] ?? null;
-  }, [selectedArticlesList]);
-
-  const selectedSet = useMemo(() => new Set(selectedOrder), [selectedOrder]);
-
-  const selectArticle = useCallback((e: MouseEvent<HTMLButtonElement>, article: NewsArticle) => {
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedOrder((prev) => {
-        if (prev.includes(article.id)) return prev.filter((id) => id !== article.id);
-        return [...prev, article.id];
-      });
-    } else {
-      setSelectedOrder([article.id]);
+  useEffect(() => {
+    if (selectedId && !filteredArticles.some((a) => a.id === selectedId)) {
+      setSelectedId(null);
     }
+  }, [filteredArticles, selectedId]);
+
+  const selectArticle = useCallback((article: NewsArticle) => {
+    setSelectedId(article.id);
   }, []);
 
-  const openShareBundle = useCallback(() => {
-    const list = selectedArticlesList.slice(0, 15);
-    if (list.length === 0) return;
-    /** Always show the dialog so Story / PDF buttons work; single-article double-click may still auto-export. */
-    setShareTarget({ articles: list, theme, autoExecute: undefined });
-  }, [selectedArticlesList, theme]);
+  const openShareForSelection = useCallback(() => {
+    if (!selectedArticle) return;
+    setShareTarget({ articles: [selectedArticle], theme, autoExecute: undefined });
+  }, [selectedArticle, theme]);
 
   const toggleFilterGroup = useCallback((id: TopicFilterGroup) => {
     setFilterGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  const selRtl = primaryArticle?.locale === "ar";
+  const selRtl = selectedArticle?.locale === "ar";
 
   const brandSelectClass = useMemo(() => {
     const base =
@@ -568,8 +554,8 @@ export function HomeClient() {
                 <li key={a.id}>
                   <ArticleCard
                     article={a}
-                    onSelect={(e) => selectArticle(e, a)}
-                    active={selectedSet.has(a.id)}
+                    onSelect={() => selectArticle(a)}
+                    active={selectedId === a.id}
                     onShareDoubleClick={() => openShare(a)}
                   />
                 </li>
@@ -588,8 +574,8 @@ export function HomeClient() {
                 <li key={a.id}>
                   <ArticleCard
                     article={a}
-                    onSelect={(e) => selectArticle(e, a)}
-                    active={selectedSet.has(a.id)}
+                    onSelect={() => selectArticle(a)}
+                    active={selectedId === a.id}
                     onShareDoubleClick={() => openShare(a)}
                   />
                 </li>
@@ -607,53 +593,34 @@ export function HomeClient() {
             dir={selRtl ? "rtl" : "ltr"}
             lang={selRtl ? "ar" : "fr"}
           >
-            <h2 className="theme-headline text-lg font-semibold text-white">
-              {t.selectedTitle}
-              {selectedOrder.length > 0 ? (
-                <span className="theme-muted ms-2 text-sm font-normal">({selectedOrder.length})</span>
-              ) : null}
-            </h2>
-            {selectedOrder.length === 0 && (
+            <h2 className="theme-headline text-lg font-semibold text-white">{t.selectedTitle}</h2>
+            {!selectedArticle && (
               <p className="theme-muted mt-2 text-sm text-slate-500">
                 {t.selectHint}
               </p>
             )}
-            {selectedOrder.length > 0 && (
+            {selectedArticle && (
               <div className="mt-3 flex flex-wrap gap-2" dir="ltr">
                 <button
                   type="button"
-                  onClick={() => openShareBundle()}
+                  onClick={() => openShareForSelection()}
                   className="rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-md transition hover:brightness-110"
                 >
                   {t.selectionPhoto}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedOrder([])}
+                  onClick={() => setSelectedId(null)}
                   className="theme-mode-toggle rounded-lg px-3 py-1.5 text-[11px] font-semibold"
                 >
                   {t.clearSelection}
                 </button>
               </div>
             )}
-            {selectedOrder.length > 1 && (
-              <ul className="theme-muted mt-3 max-h-32 space-y-1 overflow-y-auto text-[11px] leading-snug" dir="auto">
-                {selectedArticlesList.map((a) => (
-                  <li
-                    key={a.id}
-                    className="truncate border-b border-white/5 pb-1 [unicode-bidi:isolate]"
-                    dir="auto"
-                    lang={a.locale === "ar" ? "ar" : "fr"}
-                  >
-                    {a.translatedTitle ?? a.title}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {primaryArticle && (
+            {selectedArticle && (
               <div className="mt-4 flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  {primaryArticle.independentMedia && (
+                  {selectedArticle.independentMedia && (
                     <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100">
                       Média indépendant
                     </span>
@@ -665,24 +632,24 @@ export function HomeClient() {
                         : "border border-rose-400/40 bg-rose-500/15 text-rose-100"
                     }`}
                   >
-                    {primaryArticle.topic}
+                    {selectedArticle.topic}
                   </span>
                 </div>
                 <p className="theme-headline text-base font-medium leading-snug text-white">
-                  {primaryArticle.translatedTitle ?? primaryArticle.title}
+                  {selectedArticle.translatedTitle ?? selectedArticle.title}
                 </p>
-                <p className="theme-muted text-xs uppercase tracking-wide text-slate-500">{primaryArticle.sourceLabel}</p>
+                <p className="theme-muted text-xs uppercase tracking-wide text-slate-500">{selectedArticle.sourceLabel}</p>
                 <time
-                  dateTime={primaryArticle.pubDate ?? undefined}
+                  dateTime={selectedArticle.pubDate ?? undefined}
                   className="theme-muted text-[11px] text-slate-400"
                 >
-                  {formatCardDate(primaryArticle.pubDate, primaryArticle.locale)}
+                  {formatCardDate(selectedArticle.pubDate, selectedArticle.locale)}
                 </time>
-                {primaryArticle.summary && (
-                  <p className="theme-muted text-sm leading-relaxed text-slate-400">{primaryArticle.summary}</p>
+                {selectedArticle.summary && (
+                  <p className="theme-muted text-sm leading-relaxed text-slate-400">{selectedArticle.summary}</p>
                 )}
                 <a
-                  href={primaryArticle.link}
+                  href={selectedArticle.link}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex w-fit items-center gap-2 rounded-lg bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-300 ring-1 ring-sky-400/40 transition hover:bg-sky-500/25"

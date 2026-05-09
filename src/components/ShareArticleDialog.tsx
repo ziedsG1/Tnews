@@ -37,8 +37,6 @@ function canvasBackgroundForTheme(theme: ThemeMode): string {
 const HTML2CANVAS_BLANK_PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-const PDF_JPEG_QUALITY = 0.88;
-
 /**
  * RSS hero images are cross-origin; html2canvas may still produce a tainted canvas, so
  * `toDataURL` / `toBlob` throw. We swap remote bitmaps only inside html2canvas's cloned DOM.
@@ -75,30 +73,21 @@ function stripRemoteRasterImagesInClone(rootOnPage: HTMLElement, clonedDoc: Docu
   }
 }
 
-function canvasCannotExportJpeg(canvas: HTMLCanvasElement, q: number): boolean {
+function canvasCannotExportPng(canvas: HTMLCanvasElement): boolean {
   try {
-    canvas.toDataURL("image/jpeg", q);
+    canvas.toDataURL("image/png", 0.92);
     return false;
   } catch {
     return true;
   }
 }
 
-/** html2canvas clone: system Arabic stacks rasterize reliably; variable font names differ by build. */
-function injectPdfFriendlyArabicTypography(clonedDoc: Document): void {
-  const st = clonedDoc.createElement("style");
-  st.setAttribute("data-tnews-image-capture", "1");
-  st.textContent = `
-    [lang="ar"], [dir="rtl"], .share-preview-ar {
-      font-family: Tahoma, "Segoe UI", "Noto Sans Arabic", "Arabic Typesetting", "Arial Unicode MS", sans-serif !important;
-      letter-spacing: 0 !important;
-      font-feature-settings: "liga" 1, "kern" 1;
-    }
-    .share-heritage-body {
-      font-family: Georgia, "Times New Roman", "Noto Sans Arabic", serif !important;
-    }
-  `;
-  (clonedDoc.head ?? clonedDoc.documentElement).appendChild(st);
+/** mix-blend and heavy filters break html2canvas; keep fonts identical to the live page (no !important overrides). */
+function prepareShareCaptureClone(rootOnPage: HTMLElement, clonedDoc: Document): void {
+  stripRemoteRasterImagesInClone(rootOnPage, clonedDoc);
+  clonedDoc.querySelectorAll(".share-capture-noise").forEach((el) => {
+    (el as HTMLElement).style.setProperty("display", "none");
+  });
 }
 
 async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
@@ -125,7 +114,7 @@ async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
 }
 
 /**
- * Raster capture for PNG download: strip remote images in clone (avoids tainted canvas), inject Arabic-friendly fonts,
+ * Raster capture for PNG: strip remote images and capture-noise layers in the clone (avoids tainted / broken canvas),
  * retry at lower scale if the canvas is too large or capture throws.
  * `compact` uses gentler scales for in-app browsers (Instagram, etc.) and small viewports.
  */
@@ -140,18 +129,21 @@ async function captureSharePreviewForPdf(
   let lastErr: unknown;
   for (const scale of scales) {
     try {
+      const capW = Math.max(1, root.offsetWidth);
+      const capH = Math.max(1, Math.max(root.offsetHeight, root.scrollHeight));
       const canvas = await html2canvas(root, {
         scale,
+        width: capW,
+        height: capH,
         useCORS: true,
         logging: false,
         backgroundColor,
         onclone: (clonedDoc: Document) => {
-          stripRemoteRasterImagesInClone(root, clonedDoc);
-          injectPdfFriendlyArabicTypography(clonedDoc);
+          prepareShareCaptureClone(root, clonedDoc);
         },
       });
       if (canvas.width < 2 || canvas.height < 2) throw new Error("EmptyShareCapture");
-      if (canvasCannotExportJpeg(canvas, PDF_JPEG_QUALITY)) throw new Error("TaintedCanvas");
+      if (canvasCannotExportPng(canvas)) throw new Error("TaintedCanvas");
       return canvas;
     } catch (e) {
       lastErr = e;
@@ -172,13 +164,14 @@ function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTM
   const ctx = out.getContext("2d");
   if (!ctx) return canvas;
   ctx.drawImage(canvas, 0, 0, w, h, 0, 0, out.width, out.height);
-  if (canvasCannotExportJpeg(out, PDF_JPEG_QUALITY)) return canvas;
+  if (canvasCannotExportPng(out)) return canvas;
   return out;
 }
 
 function shareExportBaseName(articles: NewsArticle[]): string {
-  if (articles.length > 1) return `tnews-selection-${articles.length}`;
-  return slugFilename(articles[0]!.translatedTitle ?? articles[0]!.title);
+  const a = articles[0];
+  if (!a) return "tnews-article";
+  return slugFilename(a.translatedTitle ?? a.title);
 }
 
 /** Instagram / Facebook / TikTok in-app browsers: no real Web Share, tight canvas limits. */
@@ -187,7 +180,60 @@ function inAppBrowserLikely(): boolean {
   return /Instagram|FBAN|FBAV|FB_IAB|TikTok|Line\/|Snapchat/i.test(navigator.userAgent);
 }
 
-/** Raster preview (strip + Arabic-safe fonts), saved as PNG. */
+function isAppleMobile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/** Trigger save: anchor download on desktop; new tab + long-press on iOS where `download` is unreliable. */
+function triggerPngDownload(blob: Blob, filename: string): boolean {
+  const tryAnchor = (): boolean => {
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.setAttribute("download", filename);
+      a.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01";
+      document.body.appendChild(a);
+      a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+      window.setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 8000);
+      return true;
+    } catch {
+      URL.revokeObjectURL(url);
+      return false;
+    }
+  };
+
+  const tryNewTab = (): boolean => {
+    try {
+      const imgUrl = URL.createObjectURL(blob);
+      const w = window.open("", "_blank", "noopener,noreferrer");
+      if (!w) {
+        URL.revokeObjectURL(imgUrl);
+        return false;
+      }
+      w.document.write(
+        `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body style="margin:0;background:#111827;color:#e2e8f0;font:15px system-ui"><p style="padding:12px;line-height:1.4">Long press the image → Save / Add to Photos</p><img src="${imgUrl}" alt="Tnews" style="max-width:100%;height:auto;display:block"/></body></html>`,
+      );
+      w.document.close();
+      window.setTimeout(() => URL.revokeObjectURL(imgUrl), 120000);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (isAppleMobile()) {
+    return tryNewTab() || tryAnchor();
+  }
+  return tryAnchor() || tryNewTab();
+}
+
+/** Raster preview (strip remote images, stable capture), saved as PNG. */
 async function downloadSharePreviewPng(
   root: HTMLElement | null,
   articles: NewsArticle[],
@@ -203,17 +249,8 @@ async function downloadSharePreviewPng(
   const raw = await captureSharePreviewForPdf(root, bg, { compact });
   const canvas = downscaleCanvasIfNeeded(raw, compact ? 4000 : 7800);
   const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.92));
-  if (!blob) return false;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${shareExportBaseName(articles)}.png`;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
-  return true;
+  if (!blob || blob.size < 32) return false;
+  return triggerPngDownload(blob, `${shareExportBaseName(articles)}.png`);
 }
 
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
@@ -306,164 +343,6 @@ function ShareHeroImage({ url, rtl, caption }: { url: string | null; rtl: boolea
   );
 }
 
-function dominantRtl(articles: NewsArticle[]): boolean {
-  const ar = articles.filter((a) => a.locale === "ar").length;
-  return ar * 2 >= articles.length;
-}
-
-/** One vintage broadsheet page: full selection list + a single hero photo from the first item that carries an RSS image. */
-function ShareSelectionVintageBroadsheet({
-  articles,
-  siteLabel,
-  uiLang,
-}: {
-  articles: NewsArticle[];
-  siteLabel: string;
-  uiLang: "ar" | "fr" | "en";
-}) {
-  const rtl = dominantRtl(articles);
-  const ar = rtl ? "share-preview-ar" : "";
-  const selectionSub =
-    uiLang === "ar"
-      ? "صفحة واحدة — صورة من أول خبر يوفّر الصورة في الخلاصة"
-      : uiLang === "fr"
-        ? "Une page — photo du premier article qui fournit une image dans le flux"
-        : "One page — photo from the first article that includes an image in the feed";
-  const hero = articles.find((a) => a.imageUrl) ?? articles[0]!;
-  const photoUrl = hero.imageUrl;
-  const others = articles.filter((a) => a.id !== hero.id);
-  const heroHeadline = hero.translatedTitle ?? hero.title;
-  const wireCaption = rtl
-    ? clipTeaser(heroHeadline, 44)
-    : heroHeadline
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 6)
-        .join(" ")
-        .toLocaleUpperCase("fr-FR")
-        .slice(0, 52);
-  const strap = rtl ? `مختارات — ${articles.length} مقالات` : `${articles.length}-ITEM DESK SELECTION`;
-  const rightBlurb = clipTeaser(
-    others
-      .map((a) => firstSentence(a.summary, 140))
-      .filter(Boolean)
-      .join("\n\n") || firstSentence(hero.summary, 320),
-    520,
-  );
-  const leftBlurb = clipTeaser(
-    others
-      .map((a) => restAfterFirstSentence(a.summary, 120))
-      .filter(Boolean)
-      .join("\n\n") || restAfterFirstSentence(hero.summary, 320),
-    520,
-  );
-
-  return (
-    <div
-      className={`share-surface-broadsheet share-vintage-front relative overflow-hidden rounded-sm border-[3px] border-double border-[#0c0806] p-3 text-[#0c0806] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)] sm:p-4 ${ar}`}
-      dir={rtl ? "rtl" : "ltr"}
-    >
-      <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-multiply">
-        <div
-          className="h-full w-full"
-          style={{
-            backgroundImage: "radial-gradient(circle, #1a120c 0.4px, transparent 0.45px)",
-            backgroundSize: "2.5px 2.5px",
-          }}
-        />
-      </div>
-      <div className="relative">
-        <header className="flex flex-col items-center pb-2 text-center">
-          <BrandLogo theme="broadsheet" className="mb-1.5 h-10 w-10 sm:h-11 sm:w-11" />
-          <p
-            className="share-site-latin text-[1.65rem] leading-[0.9] tracking-tight sm:text-[2rem]"
-            style={{
-              fontFamily: "var(--font-heritage-display), UnifrakturMaguntia, serif",
-              color: "#b91c1c",
-            }}
-          >
-            {siteLabel}
-          </p>
-          <div className="mt-2 h-px w-[min(100%,17rem)] bg-black" />
-          <div className="mt-1 h-0.5 w-[min(100%,12rem)] bg-black" />
-          <p
-            className={`mt-2.5 max-w-[99%] text-[10px] font-black leading-snug tracking-[0.05em] text-black sm:text-[11px] ${heritageUpper(rtl)}`}
-          >
-            {strap}
-          </p>
-          <p
-            className={`mt-1.5 text-[8px] font-semibold tracking-widest text-[#3d2f1f] ${uiLang === "ar" ? "normal-case" : "uppercase"}`}
-            dir={uiLang === "ar" ? "rtl" : "ltr"}
-            lang={uiLang === "ar" ? "ar" : uiLang === "fr" ? "fr" : "en"}
-          >
-            {selectionSub}
-          </p>
-        </header>
-
-        <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.05fr)_auto_minmax(0,1.05fr)] sm:items-start sm:gap-2">
-          <div className="order-2 max-h-[28rem] overflow-hidden sm:order-1">
-            <p
-              className={`share-heritage-body mb-1 text-[7px] font-black tracking-[0.2em] text-[#5c4a3a] ${heritageUpper(rtl)}`}
-            >
-              {rtl ? "العناوين" : "Headlines"}
-            </p>
-            <ol className="list-decimal space-y-1.5 ps-3.5 text-[9px] leading-[1.45] text-[#1a120c] sm:text-[8.5px]">
-              {articles.map((a) => {
-                const arItem = a.locale === "ar";
-                return (
-                  <li
-                    key={a.id}
-                    className={`[unicode-bidi:isolate] ${heritageAlign(arItem)}`}
-                    dir="auto"
-                    lang={arItem ? "ar" : "fr"}
-                  >
-                    <span className={`font-bold ${arItem ? "" : "share-heritage-body"}`}>
-                      {a.translatedTitle ?? a.title}
-                    </span>
-                    <span
-                      className={`mt-0.5 block text-[7.5px] font-semibold tracking-wide text-[#5c4a3a] ${arItem ? "normal-case" : "uppercase"}`}
-                    >
-                      {a.sourceLabel} · {formatShareDate(a.pubDate, a.locale)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-          <div className="order-1 flex justify-center sm:order-2">
-            <ShareHeroImage url={photoUrl} rtl={rtl} caption={wireCaption} />
-          </div>
-          <div
-            className={`order-3 max-h-[28rem] overflow-hidden text-[9px] leading-[1.55] text-[#1a120c] sm:text-[8.5px] ${heritageAlign(rtl)} ${!rtl ? "share-heritage-body" : ""}`}
-            style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
-          >
-            <p
-              className={`share-heritage-body mb-1 text-[7px] font-black tracking-[0.2em] text-[#5c4a3a] ${heritageUpper(rtl)}`}
-            >
-              {rtl ? "برقية" : "Wire"}
-            </p>
-            <p className="border-b border-black/15 pb-2">{leftBlurb || "—"}</p>
-            <p
-              className={`share-heritage-body mb-1 mt-2 text-[7px] font-black tracking-[0.2em] text-[#5c4a3a] ${heritageUpper(rtl)}`}
-            >
-              {rtl ? "متابعة" : "Follow"}
-            </p>
-            <p>{rightBlurb || "—"}</p>
-          </div>
-        </section>
-
-        <div
-          className={`mt-4 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-1.5 text-center text-[8px] font-bold tracking-widest text-[#3d2f1f] ${heritageUpper(rtl)}`}
-        >
-          {siteLabel}
-          <span className="mx-2 text-[#8b7355]">·</span>
-          {articles.length} {rtl ? "مقالات" : "articles"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function VintageNewsCase({
   kicker,
   title,
@@ -504,6 +383,7 @@ function VintageNewsCase({
 type ShareLabels = {
   title: string;
   preview: string;
+  noPreview: string;
   close: string;
   photo: string;
   photoBusy: string;
@@ -516,6 +396,7 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   ar: {
     title: "حفظ كصورة",
     preview: "معاينة ثم تنزيل الصورة بنمط العرض الحالي",
+    noPreview: "لا يوجد خبر للمعاينة.",
     close: "إغلاق",
     photo: "تنزيل الصورة",
     photoBusy: "جاري تجهيز الصورة…",
@@ -526,6 +407,7 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   fr: {
     title: "Enregistrer en image",
     preview: "Aperçu puis téléchargement de l’image au style actuel",
+    noPreview: "Aucun article à afficher.",
     close: "Fermer",
     photo: "Télécharger l’image",
     photoBusy: "Préparation de l’image…",
@@ -536,6 +418,7 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   en: {
     title: "Save as image",
     preview: "Preview then download the image in the current theme",
+    noPreview: "No article to preview.",
     close: "Close",
     photo: "Download image",
     photoBusy: "Preparing image…",
@@ -584,7 +467,7 @@ function SharePreview({
         dir={rtl ? "rtl" : "ltr"}
         lang={rtl ? "ar" : "fr"}
       >
-        <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-multiply">
+        <div className="share-capture-noise pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-multiply">
           <div
             className="h-full w-full"
             style={{
@@ -769,6 +652,7 @@ export function ShareArticleDialog({
   const [narrow, setNarrow] = useState(false);
   const [autoBusy, setAutoBusy] = useState(Boolean(autoExecute));
   const labels = LABELS[uiLang];
+  const previewArticle = articles[0] ?? null;
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 640px)");
@@ -839,7 +723,7 @@ export function ShareArticleDialog({
     >
       <button type="button" className="absolute inset-0 cursor-default" aria-label={labels.close} onClick={onClose} />
       <div
-        className={`theme-panel relative z-[1] max-h-[92vh] w-full overflow-y-auto rounded-2xl border p-4 shadow-2xl sm:p-5 ${articles.length > 1 ? "max-w-2xl" : "max-w-lg"}`}
+        className="theme-panel relative z-[1] max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-4 shadow-2xl sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
         {autoBusy ? (
@@ -865,16 +749,10 @@ export function ShareArticleDialog({
           </div>
 
           <div ref={previewRef} className="rounded-lg">
-            {articles.length > 1 && captureTheme === "broadsheet" ? (
-              <ShareSelectionVintageBroadsheet articles={articles} siteLabel={siteLabel} uiLang={uiLang} />
-            ) : articles.length > 1 ? (
-              <div className="flex flex-col gap-5">
-                {articles.map((art) => (
-                  <SharePreview key={art.id} article={art} siteLabel={siteLabel} captureTheme={captureTheme} />
-                ))}
-              </div>
+            {previewArticle ? (
+              <SharePreview article={previewArticle} siteLabel={siteLabel} captureTheme={captureTheme} />
             ) : (
-              <SharePreview article={articles[0]!} siteLabel={siteLabel} captureTheme={captureTheme} />
+              <p className="theme-muted py-8 text-center text-sm">{labels.noPreview}</p>
             )}
           </div>
 
@@ -884,7 +762,7 @@ export function ShareArticleDialog({
           <div className="relative z-10 mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
             <button
               type="button"
-              disabled={photoBusy}
+              disabled={photoBusy || !previewArticle}
               onClick={() => void handleDownloadPhoto()}
               className={btnPrimary}
             >
