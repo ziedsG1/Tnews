@@ -303,7 +303,7 @@ export function HomeClient() {
     const byLang = {
       ar: {
         searchPlaceholder: "بحث / Search",
-        shareHint: "انقر بطاقة لتحديد خبر واحد. نقرتان مزدوجتان: مشاركة على فيسبوك أو إنستغرام.",
+        shareHint: "انقر بطاقة لتحديد خبر واحد. نقرتان مزدوجتان: مشاركة (فيسبوك بالرابط، إنستغرام بصورة المعاينة).",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
         selectedTitle: "المحدد",
@@ -316,7 +316,7 @@ export function HomeClient() {
       },
       fr: {
         searchPlaceholder: "Recherche / Search",
-        shareHint: "Cliquez une carte pour sélectionner un article. Double-clic : partager (Facebook / Instagram).",
+        shareHint: "Cliquez une carte pour sélectionner un article. Double-clic : partager (Facebook lien, Instagram image d’aperçu).",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
         selectedTitle: "Sélection",
@@ -329,7 +329,7 @@ export function HomeClient() {
       },
       en: {
         searchPlaceholder: "Search / بحث",
-        shareHint: "Click a card to select one article. Double-click: share (Facebook / Instagram).",
+        shareHint: "Click a card to select one article. Double-click: share (Facebook link, Instagram preview image).",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
         selectedTitle: "Selection",
