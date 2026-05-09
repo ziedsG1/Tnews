@@ -109,6 +109,138 @@ function ShareHeroImage({ url, rtl, caption }: { url: string | null; rtl: boolea
   );
 }
 
+function dominantRtl(articles: NewsArticle[]): boolean {
+  const ar = articles.filter((a) => a.locale === "ar").length;
+  return ar * 2 >= articles.length;
+}
+
+/** One vintage broadsheet page: full selection list + a single hero photo from the first item that carries an RSS image. */
+function ShareSelectionVintageBroadsheet({
+  articles,
+  siteLabel,
+  uiLang,
+}: {
+  articles: NewsArticle[];
+  siteLabel: string;
+  uiLang: "ar" | "fr" | "en";
+}) {
+  const rtl = dominantRtl(articles);
+  const ar = rtl ? "share-preview-ar" : "";
+  const selectionSub =
+    uiLang === "ar"
+      ? "صفحة واحدة — صورة من أول خبر يوفّر الصورة في الخلاصة"
+      : uiLang === "fr"
+        ? "Une page — photo du premier article qui fournit une image dans le flux"
+        : "One page — photo from the first article that includes an image in the feed";
+  const hero = articles.find((a) => a.imageUrl) ?? articles[0]!;
+  const photoUrl = hero.imageUrl;
+  const others = articles.filter((a) => a.id !== hero.id);
+  const heroHeadline = hero.translatedTitle ?? hero.title;
+  const wireCaption = rtl
+    ? clipTeaser(heroHeadline, 44)
+    : heroHeadline
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 6)
+        .join(" ")
+        .toLocaleUpperCase("fr-FR")
+        .slice(0, 52);
+  const strap = rtl ? `مختارات — ${articles.length} مقالات` : `${articles.length}-ITEM DESK SELECTION`;
+  const rightBlurb = clipTeaser(
+    others
+      .map((a) => firstSentence(a.summary, 140))
+      .filter(Boolean)
+      .join("\n\n") || firstSentence(hero.summary, 320),
+    520,
+  );
+  const leftBlurb = clipTeaser(
+    others
+      .map((a) => restAfterFirstSentence(a.summary, 120))
+      .filter(Boolean)
+      .join("\n\n") || restAfterFirstSentence(hero.summary, 320),
+    520,
+  );
+
+  return (
+    <div
+      className={`share-surface-broadsheet share-vintage-front relative overflow-hidden rounded-sm border-[3px] border-double border-[#0c0806] p-3 text-[#0c0806] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)] sm:p-4 ${ar}`}
+      dir={rtl ? "rtl" : "ltr"}
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-multiply">
+        <div
+          className="h-full w-full"
+          style={{
+            backgroundImage: "radial-gradient(circle, #1a120c 0.4px, transparent 0.45px)",
+            backgroundSize: "2.5px 2.5px",
+          }}
+        />
+      </div>
+      <div className="relative">
+        <header className="flex flex-col items-center pb-2 text-center">
+          <BrandLogo theme="broadsheet" className="mb-1.5 h-10 w-10 sm:h-11 sm:w-11" />
+          <p
+            className="share-site-latin text-[1.65rem] leading-[0.9] tracking-tight sm:text-[2rem]"
+            style={{
+              fontFamily: "var(--font-heritage-display), UnifrakturMaguntia, serif",
+              color: "#b91c1c",
+            }}
+          >
+            {siteLabel}
+          </p>
+          <div className="mt-2 h-px w-[min(100%,17rem)] bg-black" />
+          <div className="mt-1 h-0.5 w-[min(100%,12rem)] bg-black" />
+          <p className="mt-2.5 max-w-[99%] text-[10px] font-black uppercase leading-snug tracking-[0.05em] text-black sm:text-[11px]">
+            {strap}
+          </p>
+          <p className="mt-1.5 text-[8px] font-semibold uppercase tracking-widest text-[#3d2f1f]">{selectionSub}</p>
+        </header>
+
+        <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.05fr)_auto_minmax(0,1.05fr)] sm:items-start sm:gap-2">
+          <div className="order-2 max-h-[28rem] overflow-hidden sm:order-1">
+            <p className="share-heritage-body mb-1 text-[7px] font-black uppercase tracking-[0.2em] text-[#5c4a3a]">
+              {rtl ? "العناوين" : "Headlines"}
+            </p>
+            <ol className="list-decimal space-y-1.5 ps-3.5 text-[9px] leading-[1.45] text-[#1a120c] sm:text-[8.5px]">
+              {articles.map((a) => (
+                <li key={a.id} className="text-justify" dir={a.locale === "ar" ? "rtl" : "ltr"} lang={a.locale === "ar" ? "ar" : "fr"}>
+                  <span className={`font-bold ${a.locale === "ar" ? "" : "share-heritage-body"}`}>
+                    {a.translatedTitle ?? a.title}
+                  </span>
+                  <span className="mt-0.5 block text-[7.5px] font-semibold uppercase tracking-wide text-[#5c4a3a]">
+                    {a.sourceLabel} · {formatShareDate(a.pubDate, a.locale)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div className="order-1 flex justify-center sm:order-2">
+            <ShareHeroImage url={photoUrl} rtl={rtl} caption={wireCaption} />
+          </div>
+          <div
+            className={`order-3 max-h-[28rem] overflow-hidden text-justify text-[9px] leading-[1.55] text-[#1a120c] sm:text-[8.5px] ${!rtl ? "share-heritage-body" : ""}`}
+            style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
+          >
+            <p className="share-heritage-body mb-1 text-[7px] font-black uppercase tracking-[0.2em] text-[#5c4a3a]">
+              {rtl ? "برقية" : "Wire"}
+            </p>
+            <p className="border-b border-black/15 pb-2">{leftBlurb || "—"}</p>
+            <p className="share-heritage-body mb-1 mt-2 text-[7px] font-black uppercase tracking-[0.2em] text-[#5c4a3a]">
+              {rtl ? "متابعة" : "Follow"}
+            </p>
+            <p>{rightBlurb || "—"}</p>
+          </div>
+        </section>
+
+        <div className="mt-4 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-1.5 text-center text-[8px] font-bold uppercase tracking-widest text-[#3d2f1f]">
+          {siteLabel}
+          <span className="mx-2 text-[#8b7355]">·</span>
+          {articles.length} {rtl ? "مقالات" : "articles"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VintageNewsCase({
   kicker,
   title,
@@ -213,6 +345,7 @@ function SharePreview({
     const extraKicker = rtl ? "عاجل" : "EXTRA";
     const topicCaseTitle = rtl ? article.topic : article.topic.toLocaleUpperCase("fr-FR");
     const sourceCaseTitle = rtl ? article.sourceLabel : article.sourceLabel.toLocaleUpperCase("fr-FR");
+    const hasWirePhoto = Boolean(article.imageUrl);
 
     return (
       <div
@@ -250,18 +383,26 @@ function SharePreview({
             <p className="mt-1 text-[8px] font-semibold uppercase tracking-widest text-[#3d2f1f]">{dateStr}</p>
           </header>
 
-          <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-start sm:gap-3">
+          <section
+            className={`mt-4 grid grid-cols-1 gap-4 sm:items-start sm:gap-3 ${
+              hasWirePhoto
+                ? "sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+                : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+            }`}
+          >
             <div
-              className={`order-2 text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:order-1 sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
+              className={`text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
               style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
             >
               {leadL || (rtl ? "…" : "—")}
             </div>
-            <div className="order-1 flex justify-center sm:order-2">
-              <ShareHeroImage url={article.imageUrl} rtl={rtl} caption={wireCaption} />
-            </div>
+            {hasWirePhoto ? (
+              <div className="flex justify-center">
+                <ShareHeroImage url={article.imageUrl} rtl={rtl} caption={wireCaption} />
+              </div>
+            ) : null}
             <div
-              className={`order-3 text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
+              className={`text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
               style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
             >
               {leadR || (rtl ? "…" : "—")}
@@ -383,14 +524,11 @@ export function ShareArticleDialog({
   autoExecute?: "story" | "pdf";
 }) {
   const previewRef = useRef<HTMLDivElement>(null);
-  const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [narrow, setNarrow] = useState(false);
   const [autoBusy, setAutoBusy] = useState(Boolean(autoExecute));
   const labels = LABELS[uiLang];
-
-  sectionRefs.current.length = articles.length;
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 640px)");
@@ -503,19 +641,10 @@ export function ShareArticleDialog({
         pdf.addImage(imgData, "PNG", x, y, w, h);
       };
 
-      if (articles.length === 1) {
-        const el = previewRef.current;
-        if (!el) return false;
-        const canvas = await h2c(el);
-        placeOnPage(canvas, 0);
-      } else {
-        for (let i = 0; i < articles.length; i++) {
-          const section = sectionRefs.current[i];
-          if (!section) return false;
-          const canvas = await h2c(section);
-          placeOnPage(canvas, i);
-        }
-      }
+      const el = previewRef.current;
+      if (!el) return false;
+      const canvas = await h2c(el);
+      placeOnPage(canvas, 0);
 
       const baseName =
         articles.length > 1
@@ -571,7 +700,7 @@ export function ShareArticleDialog({
     >
       <button type="button" className="absolute inset-0 cursor-default" aria-label={labels.close} onClick={onClose} />
       <div
-        className="theme-panel relative z-[1] max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-4 shadow-2xl sm:p-5"
+        className={`theme-panel relative z-[1] max-h-[92vh] w-full overflow-y-auto rounded-2xl border p-4 shadow-2xl sm:p-5 ${articles.length > 1 ? "max-w-2xl" : "max-w-lg"}`}
         onClick={(e) => e.stopPropagation()}
       >
         {autoBusy ? (
@@ -596,18 +725,18 @@ export function ShareArticleDialog({
             </button>
           </div>
 
-          <div ref={previewRef} className="flex flex-col gap-6 rounded-lg">
-            {articles.map((art, i) => (
-              <div
-                key={art.id}
-                ref={(el) => {
-                  sectionRefs.current[i] = el;
-                }}
-                className={articles.length > 1 ? "share-pdf-section rounded-lg" : "rounded-lg"}
-              >
-                <SharePreview article={art} siteLabel={siteLabel} captureTheme={captureTheme} />
+          <div ref={previewRef} className="rounded-lg">
+            {articles.length > 1 && captureTheme === "broadsheet" ? (
+              <ShareSelectionVintageBroadsheet articles={articles} siteLabel={siteLabel} uiLang={uiLang} />
+            ) : articles.length > 1 ? (
+              <div className="flex flex-col gap-5">
+                {articles.map((art) => (
+                  <SharePreview key={art.id} article={art} siteLabel={siteLabel} captureTheme={captureTheme} />
+                ))}
               </div>
-            ))}
+            ) : (
+              <SharePreview article={articles[0]!} siteLabel={siteLabel} captureTheme={captureTheme} />
+            )}
           </div>
 
           {err && <p className="mt-3 text-center text-sm text-red-400">{err}</p>}
