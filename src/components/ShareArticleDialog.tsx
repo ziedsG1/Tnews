@@ -94,6 +94,73 @@ function inAppBrowserLikely(): boolean {
   return /Instagram|FBAN|FBAV|FB_IAB|TikTok|Line\/|Snapchat/i.test(navigator.userAgent);
 }
 
+/** html2canvas is flaky on WebKit; `html-to-image` (SVG foreignObject) tends to work better in Safari / iOS. */
+function prefersHtmlToImageCapture(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && /Safari/i.test(ua) && !/Chrome|Chromium|Edg/i.test(ua)) return true;
+  return false;
+}
+
+function replaceRemoteImagesOnLiveSubtree(root: HTMLElement): void {
+  root.querySelectorAll("img").forEach((node) => {
+    const c = node as HTMLImageElement;
+    c.removeAttribute("crossorigin");
+    let remote = false;
+    try {
+      const u = new URL(c.currentSrc || c.src || "", window.location.href);
+      remote =
+        (u.protocol === "http:" || u.protocol === "https:") && u.origin !== window.location.origin;
+    } catch {
+      remote = Boolean(c.src && !c.src.startsWith("data:") && !c.src.startsWith("blob:"));
+    }
+    if (!remote) return;
+    c.src = HTML2CANVAS_BLANK_PIXEL;
+    c.removeAttribute("srcset");
+  });
+}
+
+function hideShareCaptureNoiseInLiveSubtree(root: HTMLElement): void {
+  root.querySelectorAll(".share-capture-noise").forEach((el) => {
+    (el as HTMLElement).style.setProperty("display", "none");
+  });
+}
+
+/**
+ * Clone off-screen so fixed / modal stacking does not break WebKit rasterizers.
+ */
+async function captureWithHtmlToImage(root: HTMLElement, captureTheme: ThemeMode): Promise<Blob | null> {
+  const rect = root.getBoundingClientRect();
+  const wPx = Math.max(280, Math.ceil(rect.width));
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = `position:fixed;left:0;top:0;width:${wPx}px;z-index:2147483640;opacity:0.001;pointer-events:none;overflow:visible`;
+  const inner = root.cloneNode(true) as HTMLElement;
+  inner.style.width = `${wPx}px`;
+  replaceRemoteImagesOnLiveSubtree(inner);
+  hideShareCaptureNoiseInLiveSubtree(inner);
+  host.appendChild(inner);
+  document.body.appendChild(host);
+  try {
+    const { toJpeg } = await import("html-to-image");
+    const dataUrl = await toJpeg(inner, {
+      quality: 0.92,
+      pixelRatio: Math.min(2.5, typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2),
+      cacheBust: true,
+      backgroundColor: canvasBackgroundForTheme(captureTheme),
+      skipFonts: /iPhone|iPad|iPod/i.test(navigator.userAgent),
+    });
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return blob.size >= 48 ? blob : null;
+  } catch {
+    return null;
+  } finally {
+    host.remove();
+  }
+}
+
 async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
   if (typeof document === "undefined" || !document.fonts?.ready) return;
   try {
@@ -211,6 +278,13 @@ async function captureSharePreviewAsJpegBlob(
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   await new Promise<void>((r) => window.setTimeout(() => r(), compact ? 120 : 0));
   const bg = canvasBackgroundForTheme(captureTheme);
+
+  if (prefersHtmlToImageCapture()) {
+    root.scrollTop = 0;
+    const hi = await captureWithHtmlToImage(root, captureTheme);
+    if (hi) return hi;
+  }
+
   try {
     const raw = await capturePreviewRootToCanvas(root, bg, compact);
     const canvas = downscaleCanvasIfNeeded(raw, compact ? 3600 : 7800);
