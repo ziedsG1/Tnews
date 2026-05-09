@@ -6,12 +6,19 @@ import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
+type ThemeMode = "dark" | "light" | "newspaper";
 
 const FILTER_LABELS: Record<TopicFilterGroup, { fr: string; ar: string }> = {
   1: { fr: "Sport", ar: "رياضة" },
   2: { fr: "Éco & politique", ar: "اقتصاد و سياسة" },
   3: { fr: "Culture & monde", ar: "ثقافة و عالم" },
   4: { fr: "Tunisie & divers", ar: "تونس و عام" },
+};
+
+const THEME_LABELS: Record<ThemeMode, string> = {
+  dark: "Dark",
+  light: "Light",
+  newspaper: "1980 Paper",
 };
 
 /** Bidirectional search aliases (latin <-> arabic) used to expand query terms. */
@@ -159,8 +166,8 @@ function ArticleCard({
       lang={rtl ? "ar" : "fr"}
       className={`w-full rounded-xl border p-4 text-start transition ${
         active
-          ? "border-rose-400/60 bg-rose-500/10"
-          : "border-white/10 bg-white/[0.02] hover:border-emerald-400/35 hover:bg-white/[0.05]"
+          ? "theme-card theme-card-active border-rose-400/60 bg-rose-500/10"
+          : "theme-card border-white/10 bg-white/[0.02] hover:border-emerald-400/35 hover:bg-white/[0.05]"
       }`}
     >
       <span className="flex flex-wrap items-center gap-1.5">
@@ -185,16 +192,13 @@ function ArticleCard({
           {article.sourceLabel}
         </span>
       </span>
-      <time
-        dateTime={article.pubDate ?? undefined}
-        className="mt-1 block text-[10px] text-slate-400"
-      >
+      <time dateTime={article.pubDate ?? undefined} className="theme-muted mt-1 block text-[10px] text-slate-400">
         {formatCardDate(article.pubDate, article.locale)}
       </time>
-      <p className={`mt-1 line-clamp-3 text-sm leading-snug text-slate-100 ${rtl ? "font-medium" : ""}`}>
+      <p className={`theme-headline mt-1 line-clamp-3 text-sm leading-snug text-slate-100 ${rtl ? "font-medium" : ""}`}>
         {article.translatedTitle ?? article.title}
       </p>
-      <span className="mt-2 inline-block text-[10px] text-slate-500">{article.topic}</span>
+      <span className="theme-muted mt-2 inline-block text-[10px] text-slate-500">{article.topic}</span>
     </button>
   );
 }
@@ -215,6 +219,7 @@ export function HomeClient() {
   const [searchQuery, setSearchQuery] = useState("");
   const [country, setCountry] = useState<CountryId>("TN");
   const [uiLang, setUiLang] = useState<UiLang>("ar");
+  const [theme, setTheme] = useState<ThemeMode>("dark");
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
   const load = useCallback(async () => {
@@ -250,6 +255,10 @@ export function HomeClient() {
       if (stored) setCountry(stored as CountryId);
       const storedLang = window.localStorage.getItem("tnews.uiLang");
       if (storedLang === "ar" || storedLang === "fr" || storedLang === "en") setUiLang(storedLang);
+      const storedTheme = window.localStorage.getItem("tnews.theme");
+      if (storedTheme === "dark" || storedTheme === "light" || storedTheme === "newspaper") {
+        setTheme(storedTheme);
+      }
     } catch {
       // ignore
     }
@@ -259,10 +268,15 @@ export function HomeClient() {
     try {
       window.localStorage.setItem("tnews.country", country);
       window.localStorage.setItem("tnews.uiLang", uiLang);
+      window.localStorage.setItem("tnews.theme", theme);
     } catch {
       // ignore
     }
-  }, [country, uiLang]);
+  }, [country, uiLang, theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const t = useMemo(() => {
     const byLang = {
@@ -340,7 +354,7 @@ export function HomeClient() {
   return (
     <main className="relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8">
       <header
-        className="sticky top-0 z-50 -mx-4 flex items-center justify-between gap-3 border-b border-white/10 bg-[#05060a]/88 px-4 py-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.85)] backdrop-blur-xl md:-mx-8 md:px-8"
+        className="theme-header sticky top-0 z-50 -mx-4 flex items-center justify-between gap-3 border-b border-white/10 bg-[#05060a]/88 px-4 py-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.85)] backdrop-blur-xl md:-mx-8 md:px-8"
         dir="ltr"
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -368,11 +382,26 @@ export function HomeClient() {
               ▾
             </span>
           </div>
-          <span className="truncate text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-400/85 sm:text-[11px]">
+          <span className="theme-muted truncate text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-400/85 sm:text-[11px]">
             · {activeCountry.names[uiLang]}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-1 rounded-full px-1 py-1">
+            {(Object.keys(THEME_LABELS) as ThemeMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                data-active={theme === mode}
+                onClick={() => setTheme(mode)}
+                className="theme-mode-toggle rounded-full px-2.5 py-1 text-[10px] font-semibold transition hover:brightness-95"
+                aria-label={`Switch theme to ${THEME_LABELS[mode]}`}
+                title={THEME_LABELS[mode]}
+              >
+                {THEME_LABELS[mode]}
+              </button>
+            ))}
+          </div>
           <select
             value={uiLang}
             onChange={(e) => setUiLang(e.target.value as UiLang)}
@@ -384,7 +413,7 @@ export function HomeClient() {
             <option value="en">EN</option>
           </select>
           {data?.fetchedAt && (
-            <span className="hidden max-w-[9rem] truncate text-[9px] text-slate-500 lg:inline">
+            <span className="theme-muted hidden max-w-[9rem] truncate text-[9px] text-slate-500 lg:inline">
               {new Intl.DateTimeFormat("fr-TN", {
                 dateStyle: "short",
                 timeStyle: "short",
@@ -404,14 +433,14 @@ export function HomeClient() {
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-2xl rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+      <div className="theme-panel mx-auto w-full max-w-2xl rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
         <input
           id="news-search"
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={t.searchPlaceholder}
-          className="w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
+          className="theme-input w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
         />
       </div>
 
@@ -424,7 +453,7 @@ export function HomeClient() {
       <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-12">
           <div dir="rtl" lang="ar">
-            <h2 className="mb-4 text-2xl font-bold text-white">{t.newsTitle}</h2>
+            <h2 className="theme-headline mb-4 text-2xl font-bold text-white">{t.newsTitle}</h2>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {arabic.map((a) => (
                 <li key={a.id}>
@@ -437,13 +466,13 @@ export function HomeClient() {
               ))}
             </ul>
             {arabic.length === 0 && !loading && (
-              <p className="text-slate-500">{t.noAr}</p>
+              <p className="theme-muted text-slate-500">{t.noAr}</p>
             )}
           </div>
 
           <div dir="ltr" lang="fr">
-            <h2 className="mb-1 text-xl font-semibold text-slate-200">{t.intlTitle}</h2>
-            <p className="mb-4 text-sm text-slate-500">Business News, fil Tunisie, Webdo…</p>
+            <h2 className="theme-headline mb-1 text-xl font-semibold text-slate-200">{t.intlTitle}</h2>
+            <p className="theme-muted mb-4 text-sm text-slate-500">Business News, fil Tunisie, Webdo…</p>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {french.map((a) => (
                 <li key={a.id}>
@@ -456,27 +485,27 @@ export function HomeClient() {
               ))}
             </ul>
             {french.length === 0 && !loading && (
-              <p className="text-slate-500">{t.noFr}</p>
+              <p className="theme-muted text-slate-500">{t.noFr}</p>
             )}
           </div>
         </div>
 
         <div className="flex flex-col gap-3 lg:sticky lg:top-14 lg:self-start">
           <aside
-            className="h-fit rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm"
+            className="theme-panel h-fit rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm"
             dir={selRtl ? "rtl" : "ltr"}
             lang={selRtl ? "ar" : "fr"}
           >
-            <h2 className="text-lg font-semibold text-white">
+            <h2 className="theme-headline text-lg font-semibold text-white">
               {t.selectedTitle}
             </h2>
             {!selected && (
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="theme-muted mt-2 text-sm text-slate-500">
                 {t.selectHint}
               </p>
             )}
             {!selected && (
-              <p className="mt-2 text-sm text-slate-600" dir="rtl" lang="ar">
+              <p className="theme-muted mt-2 text-sm text-slate-600" dir="rtl" lang="ar">
                 أو بالعربية: اضغط على أي بطاقة.
               </p>
             )}
@@ -498,18 +527,18 @@ export function HomeClient() {
                     {selected.topic}
                   </span>
                 </div>
-                <p className="text-base font-medium leading-snug text-white">
+                <p className="theme-headline text-base font-medium leading-snug text-white">
                   {selected.translatedTitle ?? selected.title}
                 </p>
-                <p className="text-xs uppercase tracking-wide text-slate-500">{selected.sourceLabel}</p>
+                <p className="theme-muted text-xs uppercase tracking-wide text-slate-500">{selected.sourceLabel}</p>
                 <time
                   dateTime={selected.pubDate ?? undefined}
-                  className="text-[11px] text-slate-400"
+                  className="theme-muted text-[11px] text-slate-400"
                 >
                   {formatCardDate(selected.pubDate, selected.locale)}
                 </time>
                 {selected.summary && (
-                  <p className="text-sm leading-relaxed text-slate-400">{selected.summary}</p>
+                  <p className="theme-muted text-sm leading-relaxed text-slate-400">{selected.summary}</p>
                 )}
                 <a
                   href={selected.link}
@@ -523,10 +552,10 @@ export function HomeClient() {
             )}
 
             <div className="mt-8 border-t border-white/10 pt-4" dir="ltr">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <h3 className="theme-muted mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Sources (aperçu)
               </h3>
-              <ul className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+              <ul className="theme-muted flex flex-wrap gap-2 text-[11px] text-slate-400">
                 <li className="rounded-md bg-emerald-950/40 px-2 py-1 text-emerald-200/90">
                   AR: Mozaïque, Diwan, Al Jazeera, Nawaat, Rassd…
                 </li>
@@ -536,10 +565,10 @@ export function HomeClient() {
           </aside>
 
           <div
-            className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center backdrop-blur-sm"
+            className="theme-panel w-full rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center backdrop-blur-sm"
             dir="ltr"
           >
-            <p className="mb-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">
+            <p className="theme-muted mb-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">
               Filtres / مرشحات
             </p>
             <div className="flex flex-wrap items-center justify-center gap-1">
