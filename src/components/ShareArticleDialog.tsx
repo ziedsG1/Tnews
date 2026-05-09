@@ -73,9 +73,10 @@ function stripRemoteRasterImagesInClone(rootOnPage: HTMLElement, clonedDoc: Docu
   }
 }
 
-function canvasCannotExportPng(canvas: HTMLCanvasElement): boolean {
+/** Export uses JPEG; same check applies to tainted canvases. */
+function canvasCannotExportJpeg(canvas: HTMLCanvasElement): boolean {
   try {
-    canvas.toDataURL("image/png", 0.92);
+    canvas.toDataURL("image/jpeg", 0.88);
     return false;
   } catch {
     return true;
@@ -114,8 +115,7 @@ async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
 }
 
 /**
- * Raster capture for PNG: strip remote images and capture-noise layers in the clone (avoids tainted / broken canvas),
- * retry at lower scale if the canvas is too large or capture throws.
+ * Raster capture: strip remote images and capture-noise in the clone, retry at lower scale on failure.
  * `compact` uses gentler scales for in-app browsers (Instagram, etc.) and small viewports.
  */
 async function captureSharePreviewForPdf(
@@ -129,12 +129,8 @@ async function captureSharePreviewForPdf(
   let lastErr: unknown;
   for (const scale of scales) {
     try {
-      const capW = Math.max(1, root.offsetWidth);
-      const capH = Math.max(1, Math.max(root.offsetHeight, root.scrollHeight));
       const canvas = await html2canvas(root, {
         scale,
-        width: capW,
-        height: capH,
         useCORS: true,
         logging: false,
         backgroundColor,
@@ -143,7 +139,7 @@ async function captureSharePreviewForPdf(
         },
       });
       if (canvas.width < 2 || canvas.height < 2) throw new Error("EmptyShareCapture");
-      if (canvasCannotExportPng(canvas)) throw new Error("TaintedCanvas");
+      if (canvasCannotExportJpeg(canvas)) throw new Error("TaintedCanvas");
       return canvas;
     } catch (e) {
       lastErr = e;
@@ -164,7 +160,7 @@ function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTM
   const ctx = out.getContext("2d");
   if (!ctx) return canvas;
   ctx.drawImage(canvas, 0, 0, w, h, 0, 0, out.width, out.height);
-  if (canvasCannotExportPng(out)) return canvas;
+  if (canvasCannotExportJpeg(out)) return canvas;
   return out;
 }
 
@@ -185,15 +181,65 @@ function isAppleMobile(): boolean {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-/** Trigger save: anchor download on desktop; new tab + long-press on iOS where `download` is unreliable. */
-function triggerPngDownload(blob: Blob, filename: string): boolean {
+function writeBlobImagePage(target: Window, blob: Blob, filename: string, hint: string): boolean {
+  try {
+    const imgUrl = URL.createObjectURL(blob);
+    const safeName = filename.replace(/"/g, "");
+    const escHint = hint.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    target.document.open();
+    target.document.write(
+      `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Tnews</title></head><body style="margin:0;background:#0f172a;color:#e2e8f0;font:15px system-ui"><p style="padding:12px;line-height:1.45">${escHint}</p><p style="padding:0 12px 12px"><a download="${safeName}" href="${imgUrl}" style="color:#5eead4">Download</a></p><img src="${imgUrl}" alt="Tnews" style="max-width:100%;height:auto;display:block"/></body></html>`,
+    );
+    target.document.close();
+    window.setTimeout(() => URL.revokeObjectURL(imgUrl), 180000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Same JPEG + delivery path for every theme. `preOpenedWindow` comes from a sync `window.open` in the click handler (avoids blocked saves after async capture). */
+function deliverShareImageBlob(
+  blob: Blob,
+  filename: string,
+  opts?: { preOpenedWindow?: Window | null },
+): boolean {
+  const hint = isAppleMobile()
+    ? "Long-press the image → Save / Add to Photos. Or use Download if shown."
+    : "Right-click the image → Save image as… Or use the Download link.";
+
+  const name = filename.replace(/"/g, "");
+
+  const tryPreOpened = (): boolean => {
+    const w = opts?.preOpenedWindow;
+    if (!w || w.closed) return false;
+    return writeBlobImagePage(w, blob, name, hint);
+  };
+
+  const tryShare = (): boolean => {
+    try {
+      const nav = navigator as Navigator & {
+        share?: (data: ShareData) => Promise<void>;
+        canShare?: (data: ShareData) => boolean;
+      };
+      if (!nav.share || !nav.canShare) return false;
+      const file = new File([blob], name, { type: "image/jpeg" });
+      const data: ShareData = { files: [file], title: "Tnews" };
+      if (!nav.canShare(data)) return false;
+      void nav.share(data);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const tryAnchor = (): boolean => {
     const url = URL.createObjectURL(blob);
     try {
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
-      a.setAttribute("download", filename);
+      a.download = name;
+      a.setAttribute("download", name);
       a.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01";
       document.body.appendChild(a);
       a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
@@ -210,35 +256,27 @@ function triggerPngDownload(blob: Blob, filename: string): boolean {
 
   const tryNewTab = (): boolean => {
     try {
-      const imgUrl = URL.createObjectURL(blob);
-      const w = window.open("", "_blank", "noopener,noreferrer");
-      if (!w) {
-        URL.revokeObjectURL(imgUrl);
-        return false;
-      }
-      w.document.write(
-        `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body style="margin:0;background:#111827;color:#e2e8f0;font:15px system-ui"><p style="padding:12px;line-height:1.4">Long press the image → Save / Add to Photos</p><img src="${imgUrl}" alt="Tnews" style="max-width:100%;height:auto;display:block"/></body></html>`,
-      );
-      w.document.close();
-      window.setTimeout(() => URL.revokeObjectURL(imgUrl), 120000);
-      return true;
+      const w = window.open("about:blank", "_blank", "noopener,noreferrer");
+      if (!w) return false;
+      return writeBlobImagePage(w, blob, name, hint);
     } catch {
       return false;
     }
   };
 
-  if (isAppleMobile()) {
-    return tryNewTab() || tryAnchor();
-  }
-  return tryAnchor() || tryNewTab();
+  if (tryPreOpened()) return true;
+  if (tryShare()) return true;
+  if (tryAnchor()) return true;
+  return tryNewTab();
 }
 
-/** Raster preview (strip remote images, stable capture), saved as PNG. */
-async function downloadSharePreviewPng(
+/** Raster preview → JPEG (same format for all themes). */
+async function downloadSharePreviewJpeg(
   root: HTMLElement | null,
   articles: NewsArticle[],
   captureTheme: ThemeMode,
   compact: boolean,
+  delivery?: { preOpenedWindow?: Window | null },
 ): Promise<boolean> {
   if (!root) return false;
   if (typeof document !== "undefined" && document.fonts?.ready) {
@@ -248,9 +286,10 @@ async function downloadSharePreviewPng(
   const bg = canvasBackgroundForTheme(captureTheme);
   const raw = await captureSharePreviewForPdf(root, bg, { compact });
   const canvas = downscaleCanvasIfNeeded(raw, compact ? 4000 : 7800);
-  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.92));
-  if (!blob || blob.size < 32) return false;
-  return triggerPngDownload(blob, `${shareExportBaseName(articles)}.png`);
+  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!blob || blob.size < 48) return false;
+  const name = `${shareExportBaseName(articles)}.jpg`;
+  return deliverShareImageBlob(blob, name, delivery);
 }
 
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
@@ -395,7 +434,7 @@ type ShareLabels = {
 const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   ar: {
     title: "حفظ كصورة",
-    preview: "معاينة ثم تنزيل الصورة بنمط العرض الحالي",
+    preview: "معاينة ثم تنزيل بصيغة JPEG (نفس الصيغة لكل الأنماط)",
     noPreview: "لا يوجد خبر للمعاينة.",
     close: "إغلاق",
     photo: "تنزيل الصورة",
@@ -406,7 +445,7 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   },
   fr: {
     title: "Enregistrer en image",
-    preview: "Aperçu puis téléchargement de l’image au style actuel",
+    preview: "Aperçu puis enregistrement en JPEG (même format pour tous les thèmes)",
     noPreview: "Aucun article à afficher.",
     close: "Fermer",
     photo: "Télécharger l’image",
@@ -417,7 +456,7 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   },
   en: {
     title: "Save as image",
-    preview: "Preview then download the image in the current theme",
+    preview: "Preview then download as JPEG (same format for every theme)",
     noPreview: "No article to preview.",
     close: "Close",
     photo: "Download image",
@@ -636,6 +675,7 @@ export function ShareArticleDialog({
   uiLang,
   onClose,
   autoExecute,
+  preOpenedWindow,
 }: {
   articles: NewsArticle[];
   siteLabel: string;
@@ -644,6 +684,8 @@ export function ShareArticleDialog({
   onClose: () => void;
   /** When set, download the preview image once after paint, then close (e.g. mobile double-tap). */
   autoExecute?: "photo";
+  /** From a synchronous `window.open` in the double-click handler so the browser allows showing the image after capture. */
+  preOpenedWindow?: Window | null;
 }) {
   const previewRef = useRef<HTMLDivElement>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -666,26 +708,54 @@ export function ShareArticleDialog({
   const btnPrimary =
     "rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 disabled:opacity-50";
 
-  const handleDownloadPhoto = useCallback(async (): Promise<boolean> => {
-    setErr(null);
-    setInfo(null);
-    setPhotoBusy(true);
-    try {
-      const el = previewRef.current;
-      const ok = await downloadSharePreviewPng(el, articles, captureTheme, compactCapture);
-      if (ok) {
-        setInfo(labels.downloadOk);
-        return true;
+  const handleDownloadPhoto = useCallback(
+    async (syncFromClick?: Window | null): Promise<boolean> => {
+      setErr(null);
+      setInfo(null);
+      setPhotoBusy(true);
+      const deliveryWindow = syncFromClick === undefined ? preOpenedWindow ?? null : syncFromClick;
+      try {
+        const el = previewRef.current;
+        const ok = await downloadSharePreviewJpeg(el, articles, captureTheme, compactCapture, {
+          preOpenedWindow: deliveryWindow,
+        });
+        if (ok) {
+          setInfo(labels.downloadOk);
+          return true;
+        }
+        setErr(labels.downloadFail);
+        if (deliveryWindow && !deliveryWindow.closed) {
+          try {
+            const b = deliveryWindow.document.body;
+            if (b) {
+              b.style.cssText = "font:15px system-ui;padding:16px;margin:0";
+              b.textContent = labels.downloadFail;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        return false;
+      } catch {
+        setErr(labels.downloadFail);
+        if (deliveryWindow && !deliveryWindow.closed) {
+          try {
+            const b = deliveryWindow.document.body;
+            if (b) {
+              b.style.cssText = "font:15px system-ui;padding:16px;margin:0";
+              b.textContent = labels.downloadFail;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        return false;
+      } finally {
+        setPhotoBusy(false);
       }
-      setErr(labels.downloadFail);
-      return false;
-    } catch {
-      setErr(labels.downloadFail);
-      return false;
-    } finally {
-      setPhotoBusy(false);
-    }
-  }, [articles, captureTheme, compactCapture, labels.downloadFail, labels.downloadOk]);
+    },
+    [articles, captureTheme, compactCapture, labels.downloadFail, labels.downloadOk, preOpenedWindow],
+  );
 
   const autoStarted = useRef(false);
   useEffect(() => {
@@ -763,7 +833,13 @@ export function ShareArticleDialog({
             <button
               type="button"
               disabled={photoBusy || !previewArticle}
-              onClick={() => void handleDownloadPhoto()}
+              onClick={() => {
+                const w =
+                  typeof window !== "undefined"
+                    ? window.open("about:blank", "_blank", "noopener,noreferrer")
+                    : null;
+                void handleDownloadPhoto(w);
+              }}
               className={btnPrimary}
             >
               {photoBusy ? labels.photoBusy : labels.photo}

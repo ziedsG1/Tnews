@@ -160,7 +160,7 @@ function ArticleCard({
   article: NewsArticle;
   onSelect: () => void;
   active: boolean;
-  onShareDoubleClick?: () => void;
+  onShareDoubleClick?: (preOpenedWindow: Window | null) => void;
 }) {
   const rtl = article.locale === "ar";
   return (
@@ -168,10 +168,13 @@ function ArticleCard({
       type="button"
       onClick={() => onSelect()}
       onDoubleClick={(e) => {
-        if (onShareDoubleClick) {
-          e.preventDefault();
-          onShareDoubleClick();
-        }
+        if (!onShareDoubleClick) return;
+        e.preventDefault();
+        const pre =
+          typeof window !== "undefined"
+            ? window.open("about:blank", "_blank", "noopener,noreferrer")
+            : null;
+        onShareDoubleClick(pre);
       }}
       dir={rtl ? "rtl" : "ltr"}
       lang={rtl ? "ar" : "fr"}
@@ -244,6 +247,7 @@ export function HomeClient() {
     articles: NewsArticle[];
     theme: ThemeMode;
     autoExecute?: "photo";
+    preOpenedWindow?: Window | null;
   } | null>(null);
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
@@ -439,14 +443,17 @@ export function HomeClient() {
           ? "text-slate-500"
           : "text-slate-400";
 
-  const openShare = useCallback((article: NewsArticle) => {
-    const w = typeof window !== "undefined" ? window.innerWidth : 1024;
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    const phoneLike =
-      w <= 768 && /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry/i.test(ua);
-    const autoExecute: "photo" | undefined = phoneLike ? "photo" : undefined;
-    setShareTarget({ articles: [article], theme, autoExecute });
-  }, [theme]);
+  const openShareFromDoubleClick = useCallback(
+    (article: NewsArticle, preOpenedWindow: Window | null) => {
+      setShareTarget({
+        articles: [article],
+        theme,
+        autoExecute: "photo",
+        preOpenedWindow,
+      });
+    },
+    [theme],
+  );
 
   return (
     <main
@@ -556,7 +563,7 @@ export function HomeClient() {
                     article={a}
                     onSelect={() => selectArticle(a)}
                     active={selectedId === a.id}
-                    onShareDoubleClick={() => openShare(a)}
+                    onShareDoubleClick={(pre) => openShareFromDoubleClick(a, pre)}
                   />
                 </li>
               ))}
@@ -576,7 +583,7 @@ export function HomeClient() {
                     article={a}
                     onSelect={() => selectArticle(a)}
                     active={selectedId === a.id}
-                    onShareDoubleClick={() => openShare(a)}
+                    onShareDoubleClick={(pre) => openShareFromDoubleClick(a, pre)}
                   />
                 </li>
               ))}
@@ -707,6 +714,7 @@ export function HomeClient() {
           captureTheme={shareTarget.theme}
           uiLang={uiLang}
           autoExecute={shareTarget.autoExecute}
+          preOpenedWindow={shareTarget.preOpenedWindow}
           onClose={() => setShareTarget(null)}
         />
       ) : null}
