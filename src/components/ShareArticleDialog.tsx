@@ -83,10 +83,15 @@ function canvasCannotExportPng(canvas: HTMLCanvasElement): boolean {
 }
 
 /** Used for PDF + system share image; retries when the canvas is tainted or capture throws. */
-async function captureSharePreviewToCanvas(root: HTMLElement, backgroundColor: string): Promise<HTMLCanvasElement> {
+async function captureSharePreviewToCanvas(
+  root: HTMLElement,
+  backgroundColor: string,
+  opts?: { scale?: number },
+): Promise<HTMLCanvasElement> {
+  const scale = opts?.scale ?? 2;
   const { default: html2canvas } = await import("html2canvas");
   const baseOpts = {
-    scale: 2,
+    scale,
     useCORS: true,
     logging: false,
     backgroundColor,
@@ -112,6 +117,57 @@ async function captureSharePreviewToCanvas(root: HTMLElement, backgroundColor: s
     return retry;
   }
   return canvas;
+}
+
+const PDF_JPEG_QUALITY = 0.9;
+
+type PdfAddImageDoc = {
+  addPage(): void;
+  addImage(
+    imageData: string | HTMLCanvasElement,
+    format: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ): void;
+};
+
+/**
+ * One tall html2canvas bitmap scaled to a single A4 width becomes unreadably small.
+ * Split the bitmap vertically across multiple pages at full printable width.
+ */
+function addCanvasToPdfPaginated(pdf: PdfAddImageDoc, canvas: HTMLCanvasElement, layout: { margin: number; maxW: number; maxH: number; pageW: number }): void {
+  const { margin, maxW, maxH, pageW } = layout;
+  const cw = canvas.width;
+  const ch = canvas.height;
+  if (cw < 2 || ch < 2) {
+    throw new Error("EmptyShareCapture");
+  }
+
+  const fullHmm = (ch / cw) * maxW;
+  if (fullHmm <= maxH + 0.5) {
+    const x = (pageW - maxW) / 2;
+    pdf.addImage(canvas.toDataURL("image/jpeg", PDF_JPEG_QUALITY), "JPEG", x, margin, maxW, fullHmm);
+    return;
+  }
+
+  const pages = Math.ceil(fullHmm / maxH);
+  for (let i = 0; i < pages; i++) {
+    if (i > 0) pdf.addPage();
+    const sy = Math.floor((i * ch) / pages);
+    const syNext = Math.floor(((i + 1) * ch) / pages);
+    const sh = Math.max(1, syNext - sy);
+    const piece = document.createElement("canvas");
+    piece.width = cw;
+    piece.height = sh;
+    const ctx = piece.getContext("2d");
+    if (!ctx) throw new Error("NoCanvas2d");
+    ctx.drawImage(canvas, 0, sy, cw, sh, 0, 0, cw, sh);
+    const hMm = (sh / cw) * maxW;
+    const x = (pageW - maxW) / 2;
+    pdf.addImage(piece.toDataURL("image/jpeg", PDF_JPEG_QUALITY), "JPEG", x, margin, maxW, hMm);
+  }
 }
 
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
@@ -742,34 +798,26 @@ export function ShareArticleDialog({
       if (typeof document !== "undefined" && document.fonts?.ready) {
         await document.fonts.ready;
       }
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      const el = previewRef.current;
+      if (!el) {
+        setErr(labels.pdfFail);
+        return false;
+      }
+
       const { default: jsPDF } = await import("jspdf");
       const bg = canvasBackgroundForTheme(captureTheme);
 
       const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 12;
+      const margin = 10;
       const maxW = pageW - margin * 2;
       const maxH = pageH - margin * 2;
 
-      const placeOnPage = (canvas: HTMLCanvasElement, pageIndex: number) => {
-        const imgData = canvas.toDataURL("image/png", 0.92);
-        if (pageIndex > 0) pdf.addPage();
-        let w = maxW;
-        let h = (canvas.height * w) / canvas.width;
-        if (h > maxH) {
-          h = maxH;
-          w = (canvas.width * h) / canvas.height;
-        }
-        const x = (pageW - w) / 2;
-        const y = margin;
-        pdf.addImage(imgData, "PNG", x, y, w, h);
-      };
-
-      const el = previewRef.current;
-      if (!el) return false;
-      const canvas = await captureSharePreviewToCanvas(el, bg);
-      placeOnPage(canvas, 0);
+      const canvas = await captureSharePreviewToCanvas(el, bg, { scale: 2.35 });
+      addCanvasToPdfPaginated(pdf as PdfAddImageDoc, canvas, { margin, maxW, maxH, pageW });
 
       const baseName =
         articles.length > 1
@@ -866,25 +914,25 @@ export function ShareArticleDialog({
 
           {err && <p className="mt-3 text-center text-sm text-red-400">{err}</p>}
 
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
-          {canShare ? (
+          <div className="relative z-10 mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
+            {canShare ? (
+              <button
+                type="button"
+                onClick={() => void handleShareStory()}
+                className={preferStory ? btnPrimary : btnSecondary}
+              >
+                {labels.story}
+              </button>
+            ) : null}
             <button
               type="button"
-              onClick={() => void handleShareStory()}
-              className={preferStory ? btnPrimary : btnSecondary}
+              disabled={pdfBusy}
+              onClick={() => void handlePdf()}
+              className={preferStory ? btnSecondary : btnPrimary}
             >
-              {labels.story}
+              {pdfBusy ? labels.pdfBusy : labels.pdf}
             </button>
-          ) : null}
-          <button
-            type="button"
-            disabled={pdfBusy}
-            onClick={() => void handlePdf()}
-            className={preferStory ? btnSecondary : btnPrimary}
-          >
-            {pdfBusy ? labels.pdfBusy : labels.pdf}
-          </button>
-        </div>
+          </div>
         </div>
       </div>
     </div>
