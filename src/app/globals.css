@@ -30,6 +30,24 @@ html[data-theme="light"] {
   --subtext: #475569;
 }
 
+html[data-theme="broadsheet"] {
+  --bg-deep: #f0e4d0;
+  --glass: rgba(253, 248, 238, 0.95);
+  --text: #120c08;
+  --muted: #4a3d32;
+  --surface: rgba(255, 252, 245, 0.97);
+  --surface-strong: #fffdf7;
+  --border-soft: rgba(26, 18, 12, 0.45);
+  --input-bg: rgba(255, 253, 248, 0.98);
+  --panel-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.65),
+    0 2px 0 rgba(26, 18, 12, 0.12),
+    0 14px 32px -18px rgba(40, 28, 18, 0.4);
+  --headline: #0c0806;
+  --subtext: #45382e;
+  --accent: #8b1538;
+}
+
 html[data-theme="newspaper"] {
   --bg-deep: #e8dcc4;
   --glass: rgba(252, 246, 232, 0.92);
@@ -68,6 +86,88 @@ body {
 
 html[data-theme="light"] body {
   background: radial-gradient(ellipse 120% 80% at 50% -20%, #ffffff 0%, var(--bg-deep) 45%);
+}
+
+html[data-theme="broadsheet"] body {
+  font-family: var(--font-heritage-serif), Georgia, "Times New Roman", serif;
+  letter-spacing: 0.02em;
+  background-color: #f0e6d4;
+  background-image: repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent min(28vw, 22rem),
+      rgba(26, 18, 12, 0.065) min(28vw, 22rem),
+      rgba(26, 18, 12, 0.065) calc(min(28vw, 22rem) + 1px)
+    ),
+    radial-gradient(ellipse 120% 70% at 50% -12%, rgba(255, 252, 245, 0.92), transparent 52%),
+    linear-gradient(172deg, #fdf5e6 0%, #e6d8c0 48%, #d0bc9a 100%);
+}
+
+html[data-theme="broadsheet"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.12;
+  mix-blend-mode: multiply;
+  background-image: radial-gradient(circle, rgba(30, 20, 12, 0.15) 0.45px, transparent 0.55px);
+  background-size: 2.5px 2.5px;
+}
+
+html[data-theme="broadsheet"] .theme-panel {
+  border-radius: 0.2rem;
+  border-style: double;
+  border-width: 3px;
+  border-color: rgba(26, 18, 12, 0.55);
+}
+
+html[data-theme="broadsheet"] .theme-card {
+  border-radius: 0.15rem;
+  border-style: solid;
+  border-width: 2px 2px 3px !important;
+  border-color: rgba(26, 18, 12, 0.5) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+
+html[data-theme="broadsheet"] .theme-header {
+  border-bottom: 3px double rgba(26, 18, 12, 0.55);
+}
+
+.broadsheet-main {
+  position: relative;
+  z-index: 1;
+}
+
+html[data-theme="broadsheet"] .broadsheet-main {
+  animation: newspaper-page-in 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+html[data-theme="broadsheet"] .theme-headline {
+  font-family: var(--font-heritage-serif), Georgia, serif !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
+}
+
+@keyframes heritage-masthead-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 1px 0 rgba(139, 21, 56, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 2px 1px rgba(139, 21, 56, 0.45));
+  }
+}
+
+.brand-logo-heritage {
+  animation: heritage-masthead-glow 4s ease-in-out infinite;
+}
+
+.brand-select-broadsheet {
+  font-family: var(--font-heritage-display), "UnifrakturMaguntia", serif !important;
+  color: #8b1538 !important;
+  -webkit-text-fill-color: #8b1538 !important;
+  background-image: none !important;
 }
 
 html[data-theme="newspaper"] body {

@@ -5,9 +5,10 @@ import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
 import { BrandLogo } from "@/components/BrandLogo";
+import { ShareArticleDialog } from "@/components/ShareArticleDialog";
+import { parseStoredTheme, THEME_ORDER, type ThemeMode } from "@/lib/uiTheme";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
-type ThemeMode = "dark" | "light" | "newspaper";
 
 const FILTER_LABELS: Record<TopicFilterGroup, { fr: string; ar: string }> = {
   1: { fr: "Sport", ar: "رياضة" },
@@ -19,7 +20,8 @@ const FILTER_LABELS: Record<TopicFilterGroup, { fr: string; ar: string }> = {
 const THEME_LABELS: Record<ThemeMode, string> = {
   dark: "Dark",
   light: "Light",
-  newspaper: "1980 Paper",
+  newspaper: "1980",
+  broadsheet: "Heritage",
 };
 
 /** Bidirectional search aliases (latin <-> arabic) used to expand query terms. */
@@ -153,16 +155,24 @@ function ArticleCard({
   article,
   onSelect,
   active,
+  onShareDoubleClick,
 }: {
   article: NewsArticle;
   onSelect: () => void;
   active: boolean;
+  onShareDoubleClick?: () => void;
 }) {
   const rtl = article.locale === "ar";
   return (
     <button
       type="button"
       onClick={onSelect}
+      onDoubleClick={(e) => {
+        if (onShareDoubleClick) {
+          e.preventDefault();
+          onShareDoubleClick();
+        }
+      }}
       dir={rtl ? "rtl" : "ltr"}
       lang={rtl ? "ar" : "fr"}
       className={`w-full rounded-xl border p-4 text-start transition ${
@@ -221,6 +231,11 @@ export function HomeClient() {
   const [country, setCountry] = useState<CountryId>("TN");
   const [uiLang, setUiLang] = useState<UiLang>("ar");
   const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [shareTarget, setShareTarget] = useState<{
+    article: NewsArticle;
+    theme: ThemeMode;
+    autoExecute?: "story" | "pdf";
+  } | null>(null);
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
   const load = useCallback(async () => {
@@ -256,10 +271,8 @@ export function HomeClient() {
       if (stored) setCountry(stored as CountryId);
       const storedLang = window.localStorage.getItem("tnews.uiLang");
       if (storedLang === "ar" || storedLang === "fr" || storedLang === "en") setUiLang(storedLang);
-      const storedTheme = window.localStorage.getItem("tnews.theme");
-      if (storedTheme === "dark" || storedTheme === "light" || storedTheme === "newspaper") {
-        setTheme(storedTheme);
-      }
+      const storedTheme = parseStoredTheme(window.localStorage.getItem("tnews.theme"));
+      if (storedTheme) setTheme(storedTheme);
     } catch {
       // ignore
     }
@@ -283,6 +296,7 @@ export function HomeClient() {
     const byLang = {
       ar: {
         searchPlaceholder: "بحث / Search",
+        shareHint: "انقر مرتين على بطاقة لمشاركتها (قصة أو PDF) بنفس النمط.",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
         selectedTitle: "المقال المحدد",
@@ -293,6 +307,7 @@ export function HomeClient() {
       },
       fr: {
         searchPlaceholder: "Recherche / Search",
+        shareHint: "Double-cliquez une carte pour partager (Story sur mobile, PDF) dans le thème actuel.",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
         selectedTitle: "Article sélectionné",
@@ -303,6 +318,7 @@ export function HomeClient() {
       },
       en: {
         searchPlaceholder: "Search / بحث",
+        shareHint: "Double-click a card to share as Story (phone) or PDF, styled like your current theme.",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
         selectedTitle: "Selected article",
@@ -361,6 +377,9 @@ export function HomeClient() {
     if (theme === "newspaper") {
       return `${base} brand-select-newspaper rounded-sm border-2 border-[#3d2f1f] bg-[#fffdf5] px-4 py-1.5 pr-9 font-serif text-[1.15rem] font-extrabold tracking-tight text-[#1a120c] shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_2px_0_rgba(61,47,31,0.35)] sm:text-2xl`;
     }
+    if (theme === "broadsheet") {
+      return `${base} brand-select-broadsheet rounded-sm border-[3px] border-double border-[#1a120c] bg-[#fdf5e6] px-4 py-1.5 pr-9 text-[1.25rem] tracking-tight shadow-[inset_0_2px_0_rgba(255,255,255,0.5)] sm:text-[1.65rem]`;
+    }
     return `${base} border-white/15 bg-white/[0.06] text-slate-100 hover:border-white/25`;
   }, [theme]);
 
@@ -378,13 +397,29 @@ export function HomeClient() {
   const chevronClass =
     theme === "newspaper"
       ? "text-[#6b5344]"
-      : theme === "light"
-        ? "text-slate-500"
-        : "text-slate-400";
+      : theme === "broadsheet"
+        ? "text-[#4a3628]"
+        : theme === "light"
+          ? "text-slate-500"
+          : "text-slate-400";
+
+  const openShare = useCallback((article: NewsArticle) => {
+    const w = typeof window !== "undefined" ? window.innerWidth : 1024;
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const phoneLike =
+      w <= 768 && /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry/i.test(ua);
+    const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+    const autoExecute: "story" | "pdf" | undefined = phoneLike
+      ? canShare
+        ? "story"
+        : undefined
+      : "pdf";
+    setShareTarget({ article, theme, autoExecute });
+  }, [theme]);
 
   return (
     <main
-      className={`relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8 ${theme === "newspaper" ? "newspaper-main" : ""}`}
+      className={`relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8 ${theme === "newspaper" ? "newspaper-main" : ""} ${theme === "broadsheet" ? "broadsheet-main" : ""}`}
     >
       <header
         className="theme-header sticky top-0 z-50 -mx-4 flex items-center justify-between gap-3 border-b border-white/10 bg-[#05060a]/88 px-4 py-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.85)] backdrop-blur-xl md:-mx-8 md:px-8"
@@ -415,8 +450,8 @@ export function HomeClient() {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full px-1 py-1">
-            {(Object.keys(THEME_LABELS) as ThemeMode[]).map((mode) => (
+          <div className="flex max-w-[11rem] flex-wrap items-center justify-end gap-1 rounded-full px-1 py-1 sm:max-w-none">
+            {THEME_ORDER.map((mode) => (
               <button
                 key={mode}
                 type="button"
@@ -470,6 +505,7 @@ export function HomeClient() {
           placeholder={t.searchPlaceholder}
           className="theme-input w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
         />
+        <p className="theme-muted mt-2 text-center text-[10px] leading-snug sm:text-[11px]">{t.shareHint}</p>
       </div>
 
       {err && (
@@ -489,6 +525,7 @@ export function HomeClient() {
                     article={a}
                     onSelect={() => setSelected((prev) => (prev?.id === a.id ? null : a))}
                     active={selected?.id === a.id}
+                    onShareDoubleClick={() => openShare(a)}
                   />
                 </li>
               ))}
@@ -508,6 +545,7 @@ export function HomeClient() {
                     article={a}
                     onSelect={() => setSelected((prev) => (prev?.id === a.id ? null : a))}
                     active={selected?.id === a.id}
+                    onShareDoubleClick={() => openShare(a)}
                   />
                 </li>
               ))}
@@ -619,6 +657,17 @@ export function HomeClient() {
           </div>
         </div>
       </section>
+
+      {shareTarget ? (
+        <ShareArticleDialog
+          article={shareTarget.article}
+          siteLabel={activeCountry.brand}
+          captureTheme={shareTarget.theme}
+          uiLang={uiLang}
+          autoExecute={shareTarget.autoExecute}
+          onClose={() => setShareTarget(null)}
+        />
+      ) : null}
     </main>
   );
 }
