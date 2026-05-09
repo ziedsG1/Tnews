@@ -128,10 +128,40 @@ function hideShareCaptureNoiseInLiveSubtree(root: HTMLElement): void {
   });
 }
 
+async function waitForImagesInRoot(root: HTMLElement): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  await Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          const settle = () => {
+            if (typeof img.decode === "function") {
+              img.decode().then(() => resolve()).catch(() => resolve());
+            } else {
+              resolve();
+            }
+          };
+          if (img.complete && img.naturalWidth > 0) {
+            settle();
+            return;
+          }
+          const done = () => settle();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          window.setTimeout(done, 4500);
+        }),
+    ),
+  );
+}
+
 /**
  * Clone off-screen so fixed / modal stacking does not break WebKit rasterizers.
  */
-async function captureWithHtmlToImage(root: HTMLElement, captureTheme: ThemeMode): Promise<Blob | null> {
+async function captureWithHtmlToImage(
+  root: HTMLElement,
+  captureTheme: ThemeMode,
+  opts?: { pixelRatio?: number },
+): Promise<Blob | null> {
   const rect = root.getBoundingClientRect();
   const wPx = Math.max(280, Math.ceil(rect.width));
   const host = document.createElement("div");
@@ -145,9 +175,11 @@ async function captureWithHtmlToImage(root: HTMLElement, captureTheme: ThemeMode
   document.body.appendChild(host);
   try {
     const { toJpeg } = await import("html-to-image");
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2;
+    const pixelRatio = opts?.pixelRatio ?? Math.min(2.5, dpr);
     const dataUrl = await toJpeg(inner, {
       quality: 0.92,
-      pixelRatio: Math.min(2.5, typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2),
+      pixelRatio,
       cacheBust: true,
       backgroundColor: canvasBackgroundForTheme(captureTheme),
       skipFonts: /iPhone|iPad|iPod/i.test(navigator.userAgent),
@@ -279,10 +311,14 @@ async function captureSharePreviewAsJpegBlob(
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   await new Promise<void>((r) => window.setTimeout(() => r(), compact ? 120 : 0));
   const bg = canvasBackgroundForTheme(captureTheme);
+  await waitForImagesInRoot(root);
+
+  const storyFrame = root.dataset.instagramStory === "1";
+  const storyPixelRatio = Math.min(3, typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2);
 
   if (prefersHtmlToImageCapture()) {
     root.scrollTop = 0;
-    const hi = await captureWithHtmlToImage(root, captureTheme);
+    const hi = await captureWithHtmlToImage(root, captureTheme, storyFrame ? { pixelRatio: storyPixelRatio } : undefined);
     if (hi) return hi;
   }
 
@@ -298,18 +334,18 @@ async function captureSharePreviewAsJpegBlob(
 type IgShareResult = { kind: "sheet" } | { kind: "tab" } | { kind: "inline"; blob: Blob } | { kind: "fail" };
 
 /**
- * Rasterizes the preview card → JPEG, then:
+ * Rasterizes a 9:16 story frame (source photo + headline) → JPEG, then:
  * 1) Web Share with `files` (pick Instagram on the phone), or
  * 2) `window.open(blob:…)` so the new tab shows only the image (reliable on iOS vs. writing to about:blank), or
  * 3) `inline` so the host UI can show the image here if pop-ups are blocked.
  */
 async function shareInstagramStoryFromPreview(
-  root: HTMLElement | null,
+  storyRoot: HTMLElement | null,
   article: NewsArticle,
   captureTheme: ThemeMode,
   compact: boolean,
 ): Promise<IgShareResult> {
-  const blob = await captureSharePreviewAsJpegBlob(root, captureTheme, compact);
+  const blob = await captureSharePreviewAsJpegBlob(storyRoot, captureTheme, compact);
   if (!blob) return { kind: "fail" };
   const filename = sharePreviewImageFilename(article);
   const title = article.translatedTitle ?? article.title;
@@ -503,7 +539,7 @@ type ShareLabels = {
 const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   ar: {
     title: "مشاركة",
-    subtitle: "فيسبوك: رابط المصدر. إنستغرام: صورة المعاينة كما تظهر هنا.",
+    subtitle: "فيسبوك: رابط المصدر. إنستغرام: صورة قصة ٩:١٦ مع صورة المصدر من الخلاصة إن وُجدت.",
     noPreview: "لا يوجد خبر.",
     close: "إغلاق",
     facebook: "فيسبوك — منشور",
@@ -521,7 +557,7 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   },
   fr: {
     title: "Partager",
-    subtitle: "Facebook : lien source. Instagram : image de l’aperçu telle qu’à l’écran.",
+    subtitle: "Facebook : lien source. Instagram : image story 9:16 avec la photo du flux si disponible.",
     noPreview: "Aucun article.",
     close: "Fermer",
     facebook: "Facebook — publication",
@@ -539,7 +575,7 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   },
   en: {
     title: "Share",
-    subtitle: "Facebook: source link. Instagram: the preview card as an image (same as on screen).",
+    subtitle: "Facebook: source link. Instagram: 9:16 story image with the feed photo when available.",
     noPreview: "No article.",
     close: "Close",
     facebook: "Facebook — feed post",
@@ -556,6 +592,94 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
       "A new tab could not open (often blocked on phones). Use the image below: long-press, save, then add it to your Instagram story from Photos.",
   },
 };
+
+/** 9:16 frame for Instagram Stories: large RSS image (proxied) + headline block. */
+function ShareStoryCapture({
+  article,
+  siteLabel,
+  captureTheme,
+}: {
+  article: NewsArticle;
+  siteLabel: string;
+  captureTheme: ThemeMode;
+}) {
+  const rtl = article.locale === "ar";
+  const headline = article.translatedTitle ?? article.title;
+  const dateStr = formatShareDate(article.pubDate, article.locale);
+  const shareImg = proxiedArticleImageUrl(article.imageUrl);
+  const teaser = clipTeaser(article.summary ?? "", 150);
+  const ar = rtl ? "share-preview-ar" : "";
+
+  const panelBg =
+    captureTheme === "dark"
+      ? "bg-[#0b0d14]"
+      : captureTheme === "light"
+        ? "bg-white"
+        : captureTheme === "broadsheet"
+          ? "bg-[#fdf5e6]"
+          : captureTheme === "newspaper"
+            ? "bg-[#fffdf5]"
+            : "bg-[#fffdf5]";
+  const panelText =
+    captureTheme === "dark" ? "text-slate-100" : captureTheme === "light" ? "text-slate-900" : "text-[#0c0806]";
+  const siteAccent =
+    captureTheme === "dark"
+      ? "text-emerald-400/90"
+      : captureTheme === "light"
+        ? "text-slate-500"
+        : "text-[#5c4030]";
+  const metaMuted = captureTheme === "dark" ? "text-slate-400" : captureTheme === "light" ? "text-slate-600" : "text-[#6b5344]";
+  const borderTop = captureTheme === "dark" ? "border-white/12" : captureTheme === "light" ? "border-slate-200" : "border-[#3d2f1f]/30";
+
+  return (
+    <div
+      className={`share-story-capture flex h-[640px] w-[360px] flex-col overflow-hidden ${ar} ${panelBg} ${panelText}`}
+      dir={rtl ? "rtl" : "ltr"}
+      lang={rtl ? "ar" : "fr"}
+    >
+      <div className="relative h-[396px] w-full shrink-0 overflow-hidden bg-neutral-950">
+        {shareImg ? (
+          <>
+            <img
+              src={shareImg}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover object-center"
+            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+          </>
+        ) : (
+          <div
+            className={`flex h-full w-full flex-col items-center justify-center gap-2 px-5 text-center ${
+              captureTheme === "dark"
+                ? "bg-gradient-to-b from-slate-900 to-[#0b0d14]"
+                : "bg-gradient-to-b from-slate-200 via-white to-[#f8fafc]"
+            }`}
+          >
+            <p className={`text-[11px] font-bold uppercase tracking-[0.2em] ${siteAccent}`}>{siteLabel}</p>
+            <p className={`text-[10px] font-semibold ${metaMuted}`}>{article.sourceLabel}</p>
+          </div>
+        )}
+      </div>
+      <div className={`flex h-[244px] w-full shrink-0 flex-col border-t px-4 pb-4 pt-3 ${borderTop} ${panelBg}`}>
+        <p className={`text-[10px] font-bold uppercase tracking-wider ${siteAccent}`}>{siteLabel}</p>
+        <p className={`text-[9px] font-semibold ${metaMuted}`}>{article.sourceLabel}</p>
+        <h2 className="mt-1.5 line-clamp-4 text-balance text-[16px] font-bold leading-snug tracking-tight">{headline}</h2>
+        <p className={`mt-1.5 text-[10px] ${captureTheme === "dark" ? "text-slate-500" : "text-slate-500"}`}>{dateStr}</p>
+        {teaser ? (
+          <p
+            className={`mt-1.5 line-clamp-2 text-[11px] leading-snug ${
+              captureTheme === "dark" ? "text-slate-400" : "text-slate-600"
+            }`}
+          >
+            {teaser}
+          </p>
+        ) : null}
+        <p className={`mt-auto truncate pt-2 text-[9px] font-semibold uppercase tracking-wide ${metaMuted}`}>{article.topic}</p>
+      </div>
+    </div>
+  );
+}
 
 function SharePreview({
   article,
@@ -808,7 +932,7 @@ export function ShareArticleDialog({
 }) {
   const labels = LABELS[uiLang];
   const article = articles[0] ?? null;
-  const previewCaptureRef = useRef<HTMLDivElement>(null);
+  const storyCaptureRef = useRef<HTMLDivElement>(null);
   const [igBusy, setIgBusy] = useState(false);
   const [igTabNote, setIgTabNote] = useState(false);
   const [igErr, setIgErr] = useState<string | null>(null);
@@ -842,7 +966,7 @@ export function ShareArticleDialog({
     setIgBusy(true);
     try {
       const outcome = await shareInstagramStoryFromPreview(
-        previewCaptureRef.current,
+        storyCaptureRef.current,
         article,
         captureTheme,
         compactCapture,
@@ -893,10 +1017,15 @@ export function ShareArticleDialog({
         {article ? (
           <>
             <div
-              ref={previewCaptureRef}
-              className="max-h-[38vh] min-h-[200px] overflow-y-auto rounded-lg border border-white/10"
+              ref={storyCaptureRef}
+              className="pointer-events-none fixed left-[-12000px] top-0 z-0 h-[640px] w-[360px] overflow-hidden"
+              aria-hidden
+              data-instagram-story="1"
               data-share-capture-root
             >
+              <ShareStoryCapture article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
+            </div>
+            <div className="max-h-[38vh] min-h-[200px] overflow-y-auto rounded-lg border border-white/10">
               <SharePreview article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
             </div>
             <div className="relative z-10 mt-4 flex flex-col gap-2">
