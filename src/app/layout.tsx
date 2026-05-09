@@ -16,7 +16,7 @@ const heritageSerif = Newsreader({
   display: "swap",
 });
 
-/** Arabic shaping for UI, share preview, and html2canvas → PDF rasterization. */
+/** Arabic shaping for UI and share preview. */
 const arabicUi = Noto_Sans_Arabic({
   subsets: ["arabic", "latin"],
   weight: ["400", "600", "700"],

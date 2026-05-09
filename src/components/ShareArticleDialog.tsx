@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import type { ThemeMode } from "@/lib/uiTheme";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -15,281 +15,39 @@ function formatShareDate(iso: string | null, locale: "ar" | "fr"): string {
   }).format(new Date(t));
 }
 
-function slugFilename(title: string): string {
-  const s = title
-    .slice(0, 48)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-  return s || "article";
+function facebookFeedShareUrl(articleUrl: string): string {
+  return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(articleUrl)}`;
 }
-
-function canvasBackgroundForTheme(theme: ThemeMode): string {
-  if (theme === "dark") return "#0b0d14";
-  if (theme === "light") return "#ffffff";
-  if (theme === "broadsheet") return "#fdf5e6";
-  return "#fffdf5";
-}
-
-/** Same-origin data URI — drawing it never taints the export canvas. */
-const HTML2CANVAS_BLANK_PIXEL =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 /**
- * RSS hero images are cross-origin; html2canvas may still produce a tainted canvas, so
- * `toDataURL` / `toBlob` throw. We swap remote bitmaps only inside html2canvas's cloned DOM.
+ * Instagram has no public “post to story” URL. We use the Web Share sheet when available
+ * (often includes Instagram on phones), otherwise copy the article link and open instagram.com.
  */
-function stripRemoteRasterImagesInClone(rootOnPage: HTMLElement, clonedDoc: Document): void {
-  const origList = [...rootOnPage.querySelectorAll("img")];
-  const cloneList = [...clonedDoc.querySelectorAll("img")];
-  const n = Math.min(origList.length, cloneList.length);
-  for (let i = 0; i < n; i++) {
-    const o = origList[i] as HTMLImageElement;
-    const c = cloneList[i] as HTMLImageElement;
-    c.removeAttribute("crossorigin");
-    let remote = false;
+async function shareInstagramStoryFlow(
+  article: NewsArticle,
+  onCopied: () => void,
+): Promise<void> {
+  const url = article.link;
+  const title = article.translatedTitle ?? article.title;
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try {
-      const u = new URL(o.currentSrc || o.src || "", window.location.href);
-      remote =
-        (u.protocol === "http:" || u.protocol === "https:") && u.origin !== window.location.origin;
-    } catch {
-      remote = Boolean(o.src);
+      await navigator.share({
+        title,
+        text: `${title}\n${url}`,
+        url,
+      });
+      return;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
     }
-    if (!remote) continue;
-    try {
-      const r = o.getBoundingClientRect();
-      if (r.width >= 4 && r.height >= 4) {
-        c.style.width = `${Math.round(r.width)}px`;
-        c.style.height = `${Math.round(r.height)}px`;
-        c.style.objectFit = "cover";
-      }
-    } catch {
-      /* ignore */
-    }
-    c.src = HTML2CANVAS_BLANK_PIXEL;
-    c.removeAttribute("srcset");
   }
-}
-
-/** Export uses JPEG; same check applies to tainted canvases. */
-function canvasCannotExportJpeg(canvas: HTMLCanvasElement): boolean {
   try {
-    canvas.toDataURL("image/jpeg", 0.88);
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-/** mix-blend and heavy filters break html2canvas; keep fonts identical to the live page (no !important overrides). */
-function prepareShareCaptureClone(rootOnPage: HTMLElement, clonedDoc: Document): void {
-  stripRemoteRasterImagesInClone(rootOnPage, clonedDoc);
-  clonedDoc.querySelectorAll(".share-capture-noise").forEach((el) => {
-    (el as HTMLElement).style.setProperty("display", "none");
-  });
-}
-
-async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
-  if (typeof document === "undefined" || !document.fonts?.ready) return;
-  await document.fonts.ready;
-  const pick = (root.querySelector('[lang="ar"], .share-preview-ar, [dir="rtl"]') ?? root) as HTMLElement;
-  const faces = new Set<string>(["Tahoma", "Segoe UI", "Noto Sans Arabic"]);
-  try {
-    const ff = getComputedStyle(pick).fontFamily || "";
-    const first = ff.split(",")[0]?.trim().replace(/^["']|["']$/g, "");
-    if (first) faces.add(first);
+    await navigator.clipboard.writeText(url);
+    onCopied();
   } catch {
     /* ignore */
   }
-  for (const fam of faces) {
-    try {
-      const q = JSON.stringify(fam);
-      await document.fonts.load(`400 15px ${q}`);
-      await document.fonts.load(`700 14px ${q}`);
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-/**
- * Raster capture: strip remote images and capture-noise in the clone, retry at lower scale on failure.
- * `compact` uses gentler scales for in-app browsers (Instagram, etc.) and small viewports.
- */
-async function captureSharePreviewForPdf(
-  root: HTMLElement,
-  backgroundColor: string,
-  opts?: { compact?: boolean },
-): Promise<HTMLCanvasElement> {
-  await waitFontsForShareCapture(root);
-  const { default: html2canvas } = await import("html2canvas");
-  const scales = opts?.compact ? [1.35, 1.12, 0.95, 0.82, 0.72] : [2.2, 1.75, 1.35, 1.12];
-  let lastErr: unknown;
-  for (const scale of scales) {
-    try {
-      const canvas = await html2canvas(root, {
-        scale,
-        useCORS: true,
-        logging: false,
-        backgroundColor,
-        onclone: (clonedDoc: Document) => {
-          prepareShareCaptureClone(root, clonedDoc);
-        },
-      });
-      if (canvas.width < 2 || canvas.height < 2) throw new Error("EmptyShareCapture");
-      if (canvasCannotExportJpeg(canvas)) throw new Error("TaintedCanvas");
-      return canvas;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("ImageCaptureFailed");
-}
-
-function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTMLCanvasElement {
-  const w = canvas.width;
-  const h = canvas.height;
-  const m = Math.max(w, h);
-  if (m <= maxSide) return canvas;
-  const s = maxSide / m;
-  const out = document.createElement("canvas");
-  out.width = Math.max(2, Math.floor(w * s));
-  out.height = Math.max(2, Math.floor(h * s));
-  const ctx = out.getContext("2d");
-  if (!ctx) return canvas;
-  ctx.drawImage(canvas, 0, 0, w, h, 0, 0, out.width, out.height);
-  if (canvasCannotExportJpeg(out)) return canvas;
-  return out;
-}
-
-function shareExportBaseName(articles: NewsArticle[]): string {
-  const a = articles[0];
-  if (!a) return "tnews-article";
-  return slugFilename(a.translatedTitle ?? a.title);
-}
-
-/** Instagram / Facebook / TikTok in-app browsers: no real Web Share, tight canvas limits. */
-function inAppBrowserLikely(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Instagram|FBAN|FBAV|FB_IAB|TikTok|Line\/|Snapchat/i.test(navigator.userAgent);
-}
-
-function isAppleMobile(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
-
-function writeBlobImagePage(target: Window, blob: Blob, filename: string, hint: string): boolean {
-  try {
-    const imgUrl = URL.createObjectURL(blob);
-    const safeName = filename.replace(/"/g, "");
-    const escHint = hint.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    target.document.open();
-    target.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Tnews</title></head><body style="margin:0;background:#0f172a;color:#e2e8f0;font:15px system-ui"><p style="padding:12px;line-height:1.45">${escHint}</p><p style="padding:0 12px 12px"><a download="${safeName}" href="${imgUrl}" style="color:#5eead4">Download</a></p><img src="${imgUrl}" alt="Tnews" style="max-width:100%;height:auto;display:block"/></body></html>`,
-    );
-    target.document.close();
-    window.setTimeout(() => URL.revokeObjectURL(imgUrl), 180000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Same JPEG + delivery path for every theme. `preOpenedWindow` comes from a sync `window.open` in the click handler (avoids blocked saves after async capture). */
-function deliverShareImageBlob(
-  blob: Blob,
-  filename: string,
-  opts?: { preOpenedWindow?: Window | null },
-): boolean {
-  const hint = isAppleMobile()
-    ? "Long-press the image → Save / Add to Photos. Or use Download if shown."
-    : "Right-click the image → Save image as… Or use the Download link.";
-
-  const name = filename.replace(/"/g, "");
-
-  const tryPreOpened = (): boolean => {
-    const w = opts?.preOpenedWindow;
-    if (!w || w.closed) return false;
-    return writeBlobImagePage(w, blob, name, hint);
-  };
-
-  const tryShare = (): boolean => {
-    try {
-      const nav = navigator as Navigator & {
-        share?: (data: ShareData) => Promise<void>;
-        canShare?: (data: ShareData) => boolean;
-      };
-      if (!nav.share || !nav.canShare) return false;
-      const file = new File([blob], name, { type: "image/jpeg" });
-      const data: ShareData = { files: [file], title: "Tnews" };
-      if (!nav.canShare(data)) return false;
-      void nav.share(data);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const tryAnchor = (): boolean => {
-    const url = URL.createObjectURL(blob);
-    try {
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.setAttribute("download", name);
-      a.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01";
-      document.body.appendChild(a);
-      a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-      window.setTimeout(() => {
-        a.remove();
-        URL.revokeObjectURL(url);
-      }, 8000);
-      return true;
-    } catch {
-      URL.revokeObjectURL(url);
-      return false;
-    }
-  };
-
-  const tryNewTab = (): boolean => {
-    try {
-      const w = window.open("about:blank", "_blank", "noopener,noreferrer");
-      if (!w) return false;
-      return writeBlobImagePage(w, blob, name, hint);
-    } catch {
-      return false;
-    }
-  };
-
-  if (tryPreOpened()) return true;
-  if (tryShare()) return true;
-  if (tryAnchor()) return true;
-  return tryNewTab();
-}
-
-/** Raster preview → JPEG (same format for all themes). */
-async function downloadSharePreviewJpeg(
-  root: HTMLElement | null,
-  articles: NewsArticle[],
-  captureTheme: ThemeMode,
-  compact: boolean,
-  delivery?: { preOpenedWindow?: Window | null },
-): Promise<boolean> {
-  if (!root) return false;
-  if (typeof document !== "undefined" && document.fonts?.ready) {
-    await document.fonts.ready;
-  }
-  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-  const bg = canvasBackgroundForTheme(captureTheme);
-  const raw = await captureSharePreviewForPdf(root, bg, { compact });
-  const canvas = downscaleCanvasIfNeeded(raw, compact ? 4000 : 7800);
-  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
-  if (!blob || blob.size < 48) return false;
-  const name = `${shareExportBaseName(articles)}.jpg`;
-  return deliverShareImageBlob(blob, name, delivery);
+  window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
 }
 
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
@@ -315,12 +73,10 @@ function clipTeaser(s: string, max = 210): string {
   return `${t.slice(0, max - 1).trim()}…`;
 }
 
-/** `text-transform: uppercase` breaks Arabic glyph shaping in several browsers. */
 function heritageUpper(rtl: boolean): string {
   return rtl ? "normal-case" : "uppercase";
 }
 
-/** `text-justify` interacts badly with RTL Arabic (letters can look scrambled). */
 function heritageAlign(rtl: boolean): string {
   return rtl ? "text-start" : "text-justify";
 }
@@ -421,49 +177,41 @@ function VintageNewsCase({
 
 type ShareLabels = {
   title: string;
-  preview: string;
+  subtitle: string;
   noPreview: string;
   close: string;
-  photo: string;
-  photoBusy: string;
-  preparing: string;
-  downloadFail: string;
-  downloadOk: string;
+  facebook: string;
+  instagram: string;
+  igCopiedHint: string;
 };
 
 const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   ar: {
-    title: "حفظ كصورة",
-    preview: "معاينة ثم تنزيل بصيغة JPEG (نفس الصيغة لكل الأنماط)",
-    noPreview: "لا يوجد خبر للمعاينة.",
+    title: "مشاركة",
+    subtitle: "شارك رابط المقال على فيسبوك أو جرّب إنستغرام (قصة).",
+    noPreview: "لا يوجد خبر.",
     close: "إغلاق",
-    photo: "تنزيل الصورة",
-    photoBusy: "جاري تجهيز الصورة…",
-    preparing: "جاري تجهيز الصورة…",
-    downloadFail: "تعذر حفظ الصورة.",
-    downloadOk: "تم تنزيل الصورة.",
+    facebook: "فيسبوك — منشور",
+    instagram: "إنستغرام — قصة",
+    igCopiedHint: "تم نسخ الرابط. افتح إنستغرام والصق الرابط في ملصق القصة.",
   },
   fr: {
-    title: "Enregistrer en image",
-    preview: "Aperçu puis enregistrement en JPEG (même format pour tous les thèmes)",
-    noPreview: "Aucun article à afficher.",
+    title: "Partager",
+    subtitle: "Publiez le lien sur Facebook ou ouvrez Instagram (story).",
+    noPreview: "Aucun article.",
     close: "Fermer",
-    photo: "Télécharger l’image",
-    photoBusy: "Préparation de l’image…",
-    preparing: "Préparation de l’image…",
-    downloadFail: "Impossible d’enregistrer l’image.",
-    downloadOk: "Image téléchargée.",
+    facebook: "Facebook — publication",
+    instagram: "Instagram — story",
+    igCopiedHint: "Lien copié. Ouvrez Instagram et collez-le en sticker dans votre story.",
   },
   en: {
-    title: "Save as image",
-    preview: "Preview then download as JPEG (same format for every theme)",
-    noPreview: "No article to preview.",
+    title: "Share",
+    subtitle: "Post the article link to Facebook or open Instagram (story).",
+    noPreview: "No article.",
     close: "Close",
-    photo: "Download image",
-    photoBusy: "Preparing image…",
-    preparing: "Preparing image…",
-    downloadFail: "Could not save the image.",
-    downloadOk: "Image downloaded.",
+    facebook: "Facebook — feed post",
+    instagram: "Instagram — story",
+    igCopiedHint: "Link copied. Open Instagram and paste it as a link sticker on your story.",
   },
 };
 
@@ -650,7 +398,6 @@ function SharePreview({
     );
   }
 
-  // dark
   return (
     <div
       className={`rounded-xl border border-white/15 bg-[#0b0d14] p-5 text-slate-100 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] ${ar}`}
@@ -668,121 +415,27 @@ function SharePreview({
   );
 }
 
+const btnFb =
+  "flex w-full items-center justify-center gap-2 rounded-xl bg-[#1877F2] px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110";
+const btnIg =
+  "flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#f58529] via-[#dd2a7b] to-[#8134AF] px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110";
+
 export function ShareArticleDialog({
   articles,
   siteLabel,
   captureTheme,
   uiLang,
   onClose,
-  autoExecute,
-  preOpenedWindow,
 }: {
   articles: NewsArticle[];
   siteLabel: string;
   captureTheme: ThemeMode;
   uiLang: "ar" | "fr" | "en";
   onClose: () => void;
-  /** When set, download the preview image once after paint, then close (e.g. mobile double-tap). */
-  autoExecute?: "photo";
-  /** From a synchronous `window.open` in the double-click handler so the browser allows showing the image after capture. */
-  preOpenedWindow?: Window | null;
 }) {
-  const previewRef = useRef<HTMLDivElement>(null);
-  const [photoBusy, setPhotoBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-  const [narrow, setNarrow] = useState(false);
-  const [autoBusy, setAutoBusy] = useState(Boolean(autoExecute));
   const labels = LABELS[uiLang];
-  const previewArticle = articles[0] ?? null;
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 640px)");
-    const apply = () => setNarrow(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-
-  const compactCapture = useMemo(() => narrow || inAppBrowserLikely(), [narrow]);
-  const btnPrimary =
-    "rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 disabled:opacity-50";
-
-  const handleDownloadPhoto = useCallback(
-    async (syncFromClick?: Window | null): Promise<boolean> => {
-      setErr(null);
-      setInfo(null);
-      setPhotoBusy(true);
-      const deliveryWindow = syncFromClick === undefined ? preOpenedWindow ?? null : syncFromClick;
-      try {
-        const el = previewRef.current;
-        const ok = await downloadSharePreviewJpeg(el, articles, captureTheme, compactCapture, {
-          preOpenedWindow: deliveryWindow,
-        });
-        if (ok) {
-          setInfo(labels.downloadOk);
-          return true;
-        }
-        setErr(labels.downloadFail);
-        if (deliveryWindow && !deliveryWindow.closed) {
-          try {
-            const b = deliveryWindow.document.body;
-            if (b) {
-              b.style.cssText = "font:15px system-ui;padding:16px;margin:0";
-              b.textContent = labels.downloadFail;
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        return false;
-      } catch {
-        setErr(labels.downloadFail);
-        if (deliveryWindow && !deliveryWindow.closed) {
-          try {
-            const b = deliveryWindow.document.body;
-            if (b) {
-              b.style.cssText = "font:15px system-ui;padding:16px;margin:0";
-              b.textContent = labels.downloadFail;
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        return false;
-      } finally {
-        setPhotoBusy(false);
-      }
-    },
-    [articles, captureTheme, compactCapture, labels.downloadFail, labels.downloadOk, preOpenedWindow],
-  );
-
-  const autoStarted = useRef(false);
-  useEffect(() => {
-    if (!autoExecute || autoStarted.current) return;
-    autoStarted.current = true;
-    let cancelled = false;
-    const run = async () => {
-      let ok = false;
-      try {
-        if (typeof document !== "undefined" && document.fonts?.ready) {
-          await document.fonts.ready;
-        }
-        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-        if (cancelled) return;
-        ok = await handleDownloadPhoto();
-      } finally {
-        if (!cancelled) {
-          setAutoBusy(false);
-          if (ok) onClose();
-        }
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [autoExecute, handleDownloadPhoto, onClose]);
+  const article = articles[0] ?? null;
+  const [igHint, setIgHint] = useState(false);
 
   return (
     <div
@@ -796,56 +449,56 @@ export function ShareArticleDialog({
         className="theme-panel relative z-[1] max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-4 shadow-2xl sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        {autoBusy ? (
-          <div className="absolute inset-3 z-20 flex items-center justify-center rounded-xl bg-black/45 px-4 backdrop-blur-[2px]">
-            <p className="text-center text-sm font-medium text-white">{labels.preparing}</p>
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div>
+            <h2 id="share-dialog-title" className="theme-headline text-lg font-semibold">
+              {labels.title}
+            </h2>
+            <p className="theme-muted text-xs">{labels.subtitle}</p>
           </div>
-        ) : null}
-        <div>
-          <div className="mb-3 flex items-start justify-between gap-2">
-            <div>
-              <h2 id="share-dialog-title" className="theme-headline text-lg font-semibold">
-                {labels.title}
-              </h2>
-              <p className="theme-muted text-xs">{labels.preview}</p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="theme-mode-toggle rounded-full px-3 py-1 text-xs font-semibold"
-            >
-              {labels.close}
-            </button>
-          </div>
-
-          <div ref={previewRef} className="rounded-lg">
-            {previewArticle ? (
-              <SharePreview article={previewArticle} siteLabel={siteLabel} captureTheme={captureTheme} />
-            ) : (
-              <p className="theme-muted py-8 text-center text-sm">{labels.noPreview}</p>
-            )}
-          </div>
-
-          {info && <p className="mt-3 text-center text-sm text-emerald-300/95">{info}</p>}
-          {err && <p className="mt-3 text-center text-sm text-red-400">{err}</p>}
-
-          <div className="relative z-10 mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
-            <button
-              type="button"
-              disabled={photoBusy || !previewArticle}
-              onClick={() => {
-                const w =
-                  typeof window !== "undefined"
-                    ? window.open("about:blank", "_blank", "noopener,noreferrer")
-                    : null;
-                void handleDownloadPhoto(w);
-              }}
-              className={btnPrimary}
-            >
-              {photoBusy ? labels.photoBusy : labels.photo}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="theme-mode-toggle rounded-full px-3 py-1 text-xs font-semibold"
+          >
+            {labels.close}
+          </button>
         </div>
+
+        {article ? (
+          <>
+            <p className="theme-muted mb-2 truncate text-center text-[11px] text-sky-300/90" dir="ltr" title={article.link}>
+              {article.link}
+            </p>
+            <div className="max-h-[38vh] overflow-y-auto rounded-lg border border-white/10">
+              <SharePreview article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
+            </div>
+            <div className="relative z-10 mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                className={btnFb}
+                onClick={() => {
+                  window.open(facebookFeedShareUrl(article.link), "_blank", "noopener,noreferrer");
+                }}
+              >
+                {labels.facebook}
+              </button>
+              <button
+                type="button"
+                className={btnIg}
+                onClick={() => {
+                  setIgHint(false);
+                  void shareInstagramStoryFlow(article, () => setIgHint(true));
+                }}
+              >
+                {labels.instagram}
+              </button>
+            </div>
+            {igHint ? <p className="mt-2 text-center text-sm text-emerald-300/95">{labels.igCopiedHint}</p> : null}
+          </>
+        ) : (
+          <p className="theme-muted py-8 text-center text-sm">{labels.noPreview}</p>
+        )}
       </div>
     </div>
   );

@@ -160,7 +160,7 @@ function ArticleCard({
   article: NewsArticle;
   onSelect: () => void;
   active: boolean;
-  onShareDoubleClick?: (preOpenedWindow: Window | null) => void;
+  onShareDoubleClick?: () => void;
 }) {
   const rtl = article.locale === "ar";
   return (
@@ -170,11 +170,7 @@ function ArticleCard({
       onDoubleClick={(e) => {
         if (!onShareDoubleClick) return;
         e.preventDefault();
-        const pre =
-          typeof window !== "undefined"
-            ? window.open("about:blank", "_blank", "noopener,noreferrer")
-            : null;
-        onShareDoubleClick(pre);
+        onShareDoubleClick();
       }}
       dir={rtl ? "rtl" : "ltr"}
       lang={rtl ? "ar" : "fr"}
@@ -236,7 +232,7 @@ export function HomeClient() {
   const [data, setData] = useState<ApiPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  /** At most one selected article (sidebar + save image). */
+  /** At most one selected article (sidebar + share). */
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
   const [searchQuery, setSearchQuery] = useState("");
@@ -246,8 +242,6 @@ export function HomeClient() {
   const [shareTarget, setShareTarget] = useState<{
     articles: NewsArticle[];
     theme: ThemeMode;
-    autoExecute?: "photo";
-    preOpenedWindow?: Window | null;
   } | null>(null);
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
@@ -309,12 +303,12 @@ export function HomeClient() {
     const byLang = {
       ar: {
         searchPlaceholder: "بحث / Search",
-        shareHint: "انقر بطاقة لتحديد خبر واحد. نقرتان مزدوجتان: حفظ صورة المعاينة مباشرة.",
+        shareHint: "انقر بطاقة لتحديد خبر واحد. نقرتان مزدوجتان: مشاركة على فيسبوك أو إنستغرام.",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
         selectedTitle: "المحدد",
         selectHint: "انقر بطاقة لاختيار خبر واحد في الشريط الجانبي.",
-        selectionPhoto: "حفظ كصورة",
+        selectionPhoto: "مشاركة",
         clearSelection: "مسح التحديد",
         sourceLink: "المصدر الأصلي ↗",
         newsTitle: `أخبار ${activeCountry.names.ar}`,
@@ -322,12 +316,12 @@ export function HomeClient() {
       },
       fr: {
         searchPlaceholder: "Recherche / Search",
-        shareHint: "Cliquez une carte pour sélectionner un seul article. Double-clic : enregistrer l’image d’aperçu.",
+        shareHint: "Cliquez une carte pour sélectionner un article. Double-clic : partager (Facebook / Instagram).",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
         selectedTitle: "Sélection",
         selectHint: "Cliquez une carte pour afficher un article dans la colonne de droite.",
-        selectionPhoto: "Enregistrer en image",
+        selectionPhoto: "Partager",
         clearSelection: "Effacer la sélection",
         sourceLink: "Lire sur le site d'origine ↗",
         newsTitle: `Actualités ${activeCountry.names.fr}`,
@@ -335,12 +329,12 @@ export function HomeClient() {
       },
       en: {
         searchPlaceholder: "Search / بحث",
-        shareHint: "Click a card to select one article. Double-click: save preview image.",
+        shareHint: "Click a card to select one article. Double-click: share (Facebook / Instagram).",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
         selectedTitle: "Selection",
         selectHint: "Click a card to show one article in the sidebar.",
-        selectionPhoto: "Save as image",
+        selectionPhoto: "Share",
         clearSelection: "Clear selection",
         sourceLink: "Read on original source ↗",
         newsTitle: `${activeCountry.names.en} news`,
@@ -399,7 +393,7 @@ export function HomeClient() {
 
   const openShareForSelection = useCallback(() => {
     if (!selectedArticle) return;
-    setShareTarget({ articles: [selectedArticle], theme, autoExecute: undefined });
+    setShareTarget({ articles: [selectedArticle], theme });
   }, [selectedArticle, theme]);
 
   const toggleFilterGroup = useCallback((id: TopicFilterGroup) => {
@@ -444,13 +438,8 @@ export function HomeClient() {
           : "text-slate-400";
 
   const openShareFromDoubleClick = useCallback(
-    (article: NewsArticle, preOpenedWindow: Window | null) => {
-      setShareTarget({
-        articles: [article],
-        theme,
-        autoExecute: "photo",
-        preOpenedWindow,
-      });
+    (article: NewsArticle) => {
+      setShareTarget({ articles: [article], theme });
     },
     [theme],
   );
@@ -563,7 +552,7 @@ export function HomeClient() {
                     article={a}
                     onSelect={() => selectArticle(a)}
                     active={selectedId === a.id}
-                    onShareDoubleClick={(pre) => openShareFromDoubleClick(a, pre)}
+                    onShareDoubleClick={() => openShareFromDoubleClick(a)}
                   />
                 </li>
               ))}
@@ -583,7 +572,7 @@ export function HomeClient() {
                     article={a}
                     onSelect={() => selectArticle(a)}
                     active={selectedId === a.id}
-                    onShareDoubleClick={(pre) => openShareFromDoubleClick(a, pre)}
+                    onShareDoubleClick={() => openShareFromDoubleClick(a)}
                   />
                 </li>
               ))}
@@ -713,8 +702,6 @@ export function HomeClient() {
           siteLabel={activeCountry.brand}
           captureTheme={shareTarget.theme}
           uiLang={uiLang}
-          autoExecute={shareTarget.autoExecute}
-          preOpenedWindow={shareTarget.preOpenedWindow}
           onClose={() => setShareTarget(null)}
         />
       ) : null}
