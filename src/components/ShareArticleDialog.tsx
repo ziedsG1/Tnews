@@ -44,25 +44,22 @@ function canvasBackgroundForTheme(theme: ThemeMode): string {
 const HTML2CANVAS_BLANK_PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-function stripRemoteRasterImagesInClone(rootOnPage: HTMLElement, clonedDoc: Document): void {
-  const origList = [...rootOnPage.querySelectorAll("img")];
-  const cloneList = [...clonedDoc.querySelectorAll("img")];
-  const n = Math.min(origList.length, cloneList.length);
-  for (let i = 0; i < n; i++) {
-    const o = origList[i] as HTMLImageElement;
-    const c = cloneList[i] as HTMLImageElement;
+/** Every cross-origin <img> in the clone must be neutralized or the canvas stays tainted (Safari / mobile). */
+function stripRemoteRasterImagesInCloneDocument(clonedDoc: Document): void {
+  clonedDoc.querySelectorAll("img").forEach((node) => {
+    const c = node as HTMLImageElement;
     c.removeAttribute("crossorigin");
     let remote = false;
     try {
-      const u = new URL(o.currentSrc || o.src || "", window.location.href);
+      const u = new URL(c.currentSrc || c.src || "", window.location.href);
       remote =
         (u.protocol === "http:" || u.protocol === "https:") && u.origin !== window.location.origin;
     } catch {
-      remote = Boolean(o.src);
+      remote = Boolean(c.src && !c.src.startsWith("data:") && !c.src.startsWith("blob:"));
     }
-    if (!remote) continue;
+    if (!remote) return;
     try {
-      const r = o.getBoundingClientRect();
+      const r = c.getBoundingClientRect();
       if (r.width >= 4 && r.height >= 4) {
         c.style.width = `${Math.round(r.width)}px`;
         c.style.height = `${Math.round(r.height)}px`;
@@ -73,11 +70,11 @@ function stripRemoteRasterImagesInClone(rootOnPage: HTMLElement, clonedDoc: Docu
     }
     c.src = HTML2CANVAS_BLANK_PIXEL;
     c.removeAttribute("srcset");
-  }
+  });
 }
 
-function prepareShareCaptureClone(rootOnPage: HTMLElement, clonedDoc: Document): void {
-  stripRemoteRasterImagesInClone(rootOnPage, clonedDoc);
+function prepareShareCaptureClone(_rootOnPage: HTMLElement, clonedDoc: Document): void {
+  stripRemoteRasterImagesInCloneDocument(clonedDoc);
   clonedDoc.querySelectorAll(".share-capture-noise").forEach((el) => {
     (el as HTMLElement).style.setProperty("display", "none");
   });
@@ -99,7 +96,14 @@ function inAppBrowserLikely(): boolean {
 
 async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
   if (typeof document === "undefined" || !document.fonts?.ready) return;
-  await document.fonts.ready;
+  try {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise<void>((r) => window.setTimeout(() => r(), 2500)),
+    ]);
+  } catch {
+    /* ignore */
+  }
   const pick = (root.querySelector('[lang="ar"], .share-preview-ar, [dir="rtl"]') ?? root) as HTMLElement;
   const faces = new Set<string>(["Tahoma", "Segoe UI", "Noto Sans Arabic"]);
   try {
@@ -112,8 +116,10 @@ async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
   for (const fam of faces) {
     try {
       const q = JSON.stringify(fam);
-      await document.fonts.load(`400 15px ${q}`);
-      await document.fonts.load(`700 14px ${q}`);
+      await Promise.race([
+        Promise.all([document.fonts.load(`400 15px ${q}`), document.fonts.load(`700 14px ${q}`)]),
+        new Promise<void>((r) => window.setTimeout(() => r(), 1200)),
+      ]);
     } catch {
       /* ignore */
     }
@@ -125,9 +131,12 @@ async function capturePreviewRootToCanvas(
   backgroundColor: string,
   compact: boolean,
 ): Promise<HTMLCanvasElement> {
+  root.scrollTop = 0;
   await waitFontsForShareCapture(root);
   const { default: html2canvas } = await import("html2canvas");
-  const scales = compact ? [1.35, 1.12, 0.95, 0.82, 0.72] : [2.2, 1.75, 1.35, 1.12];
+  const scales = compact
+    ? [1.35, 1.12, 1, 0.95, 0.82, 0.72, 0.6]
+    : [2.2, 1.75, 1.35, 1.12, 1, 0.92];
   let lastErr: unknown;
   for (const scale of scales) {
     try {
@@ -136,6 +145,7 @@ async function capturePreviewRootToCanvas(
         useCORS: true,
         logging: false,
         backgroundColor,
+        imageTimeout: 20000,
         onclone: (clonedDoc: Document) => {
           prepareShareCaptureClone(root, clonedDoc);
         },
@@ -166,6 +176,25 @@ function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTM
   return out;
 }
 
+async function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  const fromBlob: Blob | null = await new Promise((resolve) => {
+    canvas.toBlob((b) => resolve(b), "image/jpeg", quality);
+  });
+  if (fromBlob && fromBlob.size >= 48) return fromBlob;
+  try {
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    const base64 = dataUrl.split(",")[1];
+    if (!base64) return null;
+    const binary = atob(base64);
+    const arr = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+    const b = new Blob([arr], { type: "image/jpeg" });
+    return b.size >= 48 ? b : null;
+  } catch {
+    return null;
+  }
+}
+
 async function captureSharePreviewAsJpegBlob(
   root: HTMLElement | null,
   captureTheme: ThemeMode,
@@ -173,15 +202,22 @@ async function captureSharePreviewAsJpegBlob(
 ): Promise<Blob | null> {
   if (!root) return null;
   if (typeof document !== "undefined" && document.fonts?.ready) {
-    await document.fonts.ready;
+    try {
+      await Promise.race([document.fonts.ready, new Promise<void>((r) => window.setTimeout(() => r(), 2000))]);
+    } catch {
+      /* ignore */
+    }
   }
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  await new Promise<void>((r) => window.setTimeout(() => r(), compact ? 120 : 0));
   const bg = canvasBackgroundForTheme(captureTheme);
-  const raw = await capturePreviewRootToCanvas(root, bg, compact);
-  const canvas = downscaleCanvasIfNeeded(raw, compact ? 4000 : 7800);
-  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
-  if (!blob || blob.size < 48) return null;
-  return blob;
+  try {
+    const raw = await capturePreviewRootToCanvas(root, bg, compact);
+    const canvas = downscaleCanvasIfNeeded(raw, compact ? 3600 : 7800);
+    return await canvasToJpegBlob(canvas, 0.88);
+  } catch {
+    return null;
+  }
 }
 
 type IgShareResult = { kind: "sheet" } | { kind: "tab" } | { kind: "inline"; blob: Blob } | { kind: "fail" };
@@ -382,6 +418,7 @@ type ShareLabels = {
   instagram: string;
   instagramBusy: string;
   igFail: string;
+  igFailInApp: string;
   igTabHint: string;
   igOpenedTabNote: string;
   igInlineHint: string;
@@ -396,7 +433,10 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
     facebook: "فيسبوك — منشور",
     instagram: "إنستغرام — قصة (صورة المعاينة)",
     instagramBusy: "جاري تجهيز الصورة…",
-    igFail: "تعذر إنشاء الصورة. جرّب متصفحاً آخر أو عطّل حظر النوافذ المنبثقة.",
+    igFail:
+      "تعذر إنشاء صورة المعاينة. جرّب سافاري أو كروم، أو حدّث الصفحة. إن كنت داخل تطبيق إنستغرام/فيسبوك، افتح الرابط في المتصفح الكامل.",
+    igFailInApp:
+      "التقاط الصورة لا يعمل داخل تطبيق إنستغرام أو فيسبوك. اضغط «⋯» أو القائمة واختر «فتح في Safari / Chrome» ثم أعد المحاولة.",
     igTabHint:
       "اضغط مطولاً على الصورة ثم احفظها، أو استخدم «تنزيل». ثم في تطبيق إنستغرام أنشئ قصة وأضف الصورة من المعرض.",
     igOpenedTabNote: "تم فتح تبويب بالصورة — اتبع التعليمات هناك لإضافتها إلى قصتك.",
@@ -411,7 +451,10 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
     facebook: "Facebook — publication",
     instagram: "Instagram — story (image d’aperçu)",
     instagramBusy: "Préparation de l’image…",
-    igFail: "Impossible de créer l’image. Essayez un autre navigateur ou autorisez les pop-ups.",
+    igFail:
+      "Impossible de créer l’image d’aperçu. Essayez Safari ou Chrome, ou rechargez la page. Si vous êtes dans l’app Instagram/Facebook, ouvrez le lien dans le navigateur du téléphone.",
+    igFailInApp:
+      "La capture ne fonctionne pas dans l’application Instagram ou Facebook. Ouvrez le site dans Safari ou Chrome, puis réessayez.",
     igTabHint:
       "Appui long sur l’image pour l’enregistrer, ou utilisez « Télécharger ». Puis dans Instagram, créez une story et ajoutez la photo depuis la galerie.",
     igOpenedTabNote: "Un onglet avec l’image est ouvert — suivez les instructions pour votre story.",
@@ -426,7 +469,10 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
     facebook: "Facebook — feed post",
     instagram: "Instagram — story (preview image)",
     instagramBusy: "Preparing image…",
-    igFail: "Could not create the image. Try another browser or allow pop-ups.",
+    igFail:
+      "Could not create the preview image. Try Safari or Chrome, or reload. If you are inside the Instagram or Facebook app, open this site in the phone browser.",
+    igFailInApp:
+      "Image capture does not work inside the Instagram or Facebook app. Open the site in Safari or Chrome, then try again.",
     igTabHint:
       "Long-press the image to save it, or use Download. Then in the Instagram app, start a story and pick the photo from your gallery.",
     igOpenedTabNote: "A new tab has the image — follow the steps there to add it to your story.",
@@ -695,7 +741,7 @@ export function ShareArticleDialog({
         compactCapture,
       );
       if (outcome.kind === "fail") {
-        setIgErr(labels.igFail);
+        setIgErr(inAppBrowserLikely() ? labels.igFailInApp : labels.igFail);
       } else if (outcome.kind === "tab") {
         setIgTabNote(true);
       } else if (outcome.kind === "inline") {
@@ -703,11 +749,11 @@ export function ShareArticleDialog({
         setInlineImageUrl(u);
       }
     } catch {
-      setIgErr(labels.igFail);
+      setIgErr(inAppBrowserLikely() ? labels.igFailInApp : labels.igFail);
     } finally {
       setIgBusy(false);
     }
-  }, [article, captureTheme, compactCapture, labels.igFail]);
+  }, [article, captureTheme, compactCapture, labels.igFail, labels.igFailInApp]);
 
   return (
     <div
@@ -741,7 +787,7 @@ export function ShareArticleDialog({
           <>
             <div
               ref={previewCaptureRef}
-              className="max-h-[38vh] overflow-y-auto rounded-lg border border-white/10"
+              className="max-h-[38vh] min-h-[200px] overflow-y-auto rounded-lg border border-white/10"
               data-share-capture-root
             >
               <SharePreview article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
