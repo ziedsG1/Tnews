@@ -184,42 +184,22 @@ async function captureSharePreviewAsJpegBlob(
   return blob;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function fillWindowWithStoryImage(target: Window, blob: Blob, filename: string, hint: string): void {
-  const imgUrl = URL.createObjectURL(blob);
-  const safeName = filename.replace(/"/g, "");
-  const hintP = `<p style="padding:12px;line-height:1.45">${escapeHtml(hint)}</p>`;
-  target.document.open();
-  target.document.write(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Instagram</title></head><body style="margin:0;background:#0f172a;color:#e2e8f0;font:15px system-ui">${hintP}<p style="padding:0 12px 12px"><a download="${safeName}" href="${imgUrl}" style="color:#5eead4">Download</a></p><img src="${imgUrl}" alt="" style="max-width:100%;height:auto;display:block"/></body></html>`,
-  );
-  target.document.close();
-  window.setTimeout(() => URL.revokeObjectURL(imgUrl), 180000);
-}
-
-type IgShareOutcome = "sheet" | "tab" | "fail";
+type IgShareResult = { kind: "sheet" } | { kind: "tab" } | { kind: "inline"; blob: Blob } | { kind: "fail" };
 
 /**
- * Rasterizes the on-screen preview card, then shares that JPEG (Instagram Stories accepts images from the share sheet).
- * Opens a blank tab synchronously from the click so a fallback tab still works after async capture.
+ * Rasterizes the preview card → JPEG, then:
+ * 1) Web Share with `files` (pick Instagram on the phone), or
+ * 2) `window.open(blob:…)` so the new tab shows only the image (reliable on iOS vs. writing to about:blank), or
+ * 3) `inline` so the host UI can show the image here if pop-ups are blocked.
  */
 async function shareInstagramStoryFromPreview(
   root: HTMLElement | null,
   article: NewsArticle,
   captureTheme: ThemeMode,
   compact: boolean,
-  preOpened: Window | null,
-  tabHint: string,
-): Promise<IgShareOutcome> {
+): Promise<IgShareResult> {
   const blob = await captureSharePreviewAsJpegBlob(root, captureTheme, compact);
-  if (!blob) return "fail";
+  if (!blob) return { kind: "fail" };
   const filename = sharePreviewImageFilename(article);
   const title = article.translatedTitle ?? article.title;
   const file = new File([blob], filename, { type: "image/jpeg" });
@@ -234,27 +214,38 @@ async function shareInstagramStoryFromPreview(
     if (allowed) {
       try {
         await nav.share(data);
-        if (preOpened && !preOpened.closed) preOpened.close();
-        return "sheet";
+        return { kind: "sheet" };
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
-          if (preOpened && !preOpened.closed) preOpened.close();
-          return "sheet";
+          return { kind: "sheet" };
         }
       }
     }
   }
-  const w =
-    preOpened && !preOpened.closed ? preOpened : typeof window !== "undefined"
-      ? window.open("about:blank", "_blank", "noopener,noreferrer")
-      : null;
-  if (!w) return "fail";
-  try {
-    fillWindowWithStoryImage(w, blob, filename, tabHint);
-    return "tab";
-  } catch {
-    return "fail";
+
+  // iOS Safari often shows an empty tab for `window.open(blob:…)` after async work; show the image in-app instead.
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    return { kind: "inline", blob };
   }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (w) {
+      try {
+        w.focus();
+      } catch {
+        /* ignore */
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 600000);
+      return { kind: "tab" };
+    }
+  } catch {
+    /* ignore */
+  }
+  URL.revokeObjectURL(url);
+  return { kind: "inline", blob };
 }
 
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
@@ -393,6 +384,7 @@ type ShareLabels = {
   igFail: string;
   igTabHint: string;
   igOpenedTabNote: string;
+  igInlineHint: string;
 };
 
 const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
@@ -408,6 +400,8 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
     igTabHint:
       "اضغط مطولاً على الصورة ثم احفظها، أو استخدم «تنزيل». ثم في تطبيق إنستغرام أنشئ قصة وأضف الصورة من المعرض.",
     igOpenedTabNote: "تم فتح تبويب بالصورة — اتبع التعليمات هناك لإضافتها إلى قصتك.",
+    igInlineHint:
+      "لم يُفتح تبويب جديد (غالباً بسبب الحظر). استخدم الصورة أدناه: اضغط مطوّلاً ثم احفظها، ثم أضفها إلى قصتك من تطبيق إنستغرام.",
   },
   fr: {
     title: "Partager",
@@ -421,6 +415,8 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
     igTabHint:
       "Appui long sur l’image pour l’enregistrer, ou utilisez « Télécharger ». Puis dans Instagram, créez une story et ajoutez la photo depuis la galerie.",
     igOpenedTabNote: "Un onglet avec l’image est ouvert — suivez les instructions pour votre story.",
+    igInlineHint:
+      "Impossible d’ouvrir un nouvel onglet (souvent bloqué). Utilisez l’image ci-dessous : appui long, enregistrez, puis ajoutez-la à votre story Instagram.",
   },
   en: {
     title: "Share",
@@ -434,6 +430,8 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
     igTabHint:
       "Long-press the image to save it, or use Download. Then in the Instagram app, start a story and pick the photo from your gallery.",
     igOpenedTabNote: "A new tab has the image — follow the steps there to add it to your story.",
+    igInlineHint:
+      "A new tab could not open (often blocked on phones). Use the image below: long-press, save, then add it to your Instagram story from Photos.",
   },
 };
 
@@ -662,6 +660,7 @@ export function ShareArticleDialog({
   const [igTabNote, setIgTabNote] = useState(false);
   const [igErr, setIgErr] = useState<string | null>(null);
   const [narrow, setNarrow] = useState(false);
+  const [inlineImageUrl, setInlineImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 640px)");
@@ -671,49 +670,44 @@ export function ShareArticleDialog({
     return () => mq.removeEventListener("change", apply);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (inlineImageUrl) URL.revokeObjectURL(inlineImageUrl);
+    };
+  }, [inlineImageUrl]);
+
   const compactCapture = narrow || inAppBrowserLikely();
 
   const runInstagramShare = useCallback(async () => {
     if (!article) return;
     setIgErr(null);
     setIgTabNote(false);
+    setInlineImageUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setIgBusy(true);
-    const pre =
-      typeof window !== "undefined" ? window.open("about:blank", "_blank", "noopener,noreferrer") : null;
     try {
       const outcome = await shareInstagramStoryFromPreview(
         previewCaptureRef.current,
         article,
         captureTheme,
         compactCapture,
-        pre,
-        labels.igTabHint,
       );
-      if (outcome === "fail") {
+      if (outcome.kind === "fail") {
         setIgErr(labels.igFail);
-        if (pre && !pre.closed) {
-          try {
-            pre.close();
-          } catch {
-            /* ignore */
-          }
-        }
-      } else if (outcome === "tab") {
+      } else if (outcome.kind === "tab") {
         setIgTabNote(true);
+      } else if (outcome.kind === "inline") {
+        const u = URL.createObjectURL(outcome.blob);
+        setInlineImageUrl(u);
       }
     } catch {
       setIgErr(labels.igFail);
-      if (pre && !pre.closed) {
-        try {
-          pre.close();
-        } catch {
-          /* ignore */
-        }
-      }
     } finally {
       setIgBusy(false);
     }
-  }, [article, captureTheme, compactCapture, labels.igFail, labels.igTabHint]);
+  }, [article, captureTheme, compactCapture, labels.igFail]);
 
   return (
     <div
@@ -772,7 +766,20 @@ export function ShareArticleDialog({
               </button>
             </div>
             {igErr ? <p className="mt-2 text-center text-sm text-red-400">{igErr}</p> : null}
-            {igTabNote ? <p className="mt-2 text-center text-sm text-emerald-300/95">{labels.igOpenedTabNote}</p> : null}
+            {igTabNote && !inlineImageUrl ? (
+              <p className="mt-2 text-center text-sm text-emerald-300/95">{labels.igOpenedTabNote}</p>
+            ) : null}
+            {inlineImageUrl ? (
+              <div className="mt-3 space-y-2 rounded-xl border border-amber-400/30 bg-black/40 p-3">
+                <p className="text-center text-sm font-medium text-amber-100/95">{labels.igInlineHint}</p>
+                <img
+                  src={inlineImageUrl}
+                  alt=""
+                  className="mx-auto max-h-[min(65vh,560px)] max-w-full rounded-lg border border-white/15 object-contain"
+                />
+                <p className="theme-muted text-center text-[11px] leading-snug text-slate-400">{labels.igTabHint}</p>
+              </div>
+            ) : null}
           </>
         ) : (
           <p className="theme-muted py-8 text-center text-sm">{labels.noPreview}</p>
