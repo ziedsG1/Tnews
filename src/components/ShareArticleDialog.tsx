@@ -75,15 +75,6 @@ function stripRemoteRasterImagesInClone(rootOnPage: HTMLElement, clonedDoc: Docu
   }
 }
 
-function canvasCannotExportPng(canvas: HTMLCanvasElement): boolean {
-  try {
-    canvas.toDataURL("image/png", 0.92);
-    return false;
-  } catch {
-    return true;
-  }
-}
-
 function canvasCannotExportJpeg(canvas: HTMLCanvasElement, q: number): boolean {
   try {
     canvas.toDataURL("image/jpeg", q);
@@ -96,7 +87,7 @@ function canvasCannotExportJpeg(canvas: HTMLCanvasElement, q: number): boolean {
 /** html2canvas clone: system Arabic stacks rasterize reliably; variable font names differ by build. */
 function injectPdfFriendlyArabicTypography(clonedDoc: Document): void {
   const st = clonedDoc.createElement("style");
-  st.setAttribute("data-tnews-pdf-capture", "1");
+  st.setAttribute("data-tnews-image-capture", "1");
   st.textContent = `
     [lang="ar"], [dir="rtl"], .share-preview-ar {
       font-family: Tahoma, "Segoe UI", "Noto Sans Arabic", "Arabic Typesetting", "Arial Unicode MS", sans-serif !important;
@@ -134,7 +125,7 @@ async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
 }
 
 /**
- * PDF / download capture: strip remote images in clone (avoids tainted canvas), inject Arabic-friendly fonts,
+ * Raster capture for PNG download: strip remote images in clone (avoids tainted canvas), inject Arabic-friendly fonts,
  * retry at lower scale if the canvas is too large or capture throws.
  * `compact` uses gentler scales for in-app browsers (Instagram, etc.) and small viewports.
  */
@@ -166,7 +157,7 @@ async function captureSharePreviewForPdf(
       lastErr = e;
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error("PdfCaptureFailed");
+  throw lastErr instanceof Error ? lastErr : new Error("ImageCaptureFailed");
 }
 
 function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTMLCanvasElement {
@@ -185,63 +176,6 @@ function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTM
   return out;
 }
 
-function canvasToPdfRasterDataUrl(canvas: HTMLCanvasElement): { data: string; format: "JPEG" | "PNG" } {
-  try {
-    return { data: canvas.toDataURL("image/jpeg", PDF_JPEG_QUALITY), format: "JPEG" };
-  } catch {
-    return { data: canvas.toDataURL("image/png"), format: "PNG" };
-  }
-}
-
-/** Used for system share image; retries when the canvas is tainted or capture throws. */
-async function captureSharePreviewToCanvas(
-  root: HTMLElement,
-  backgroundColor: string,
-  opts?: { scale?: number },
-): Promise<HTMLCanvasElement> {
-  const scale = opts?.scale ?? 2;
-  const { default: html2canvas } = await import("html2canvas");
-  const baseOpts = {
-    scale,
-    useCORS: true,
-    logging: false,
-    backgroundColor,
-  };
-  const stripOpts = {
-    ...baseOpts,
-    onclone: (clonedDoc: Document) => {
-      stripRemoteRasterImagesInClone(root, clonedDoc);
-    },
-  };
-
-  let canvas: HTMLCanvasElement;
-  try {
-    canvas = await html2canvas(root, baseOpts);
-  } catch {
-    canvas = await html2canvas(root, stripOpts);
-  }
-  if (canvasCannotExportPng(canvas)) {
-    const retry = await html2canvas(root, stripOpts);
-    if (canvasCannotExportPng(retry)) {
-      throw new Error("ShareExportTainted");
-    }
-    return retry;
-  }
-  return canvas;
-}
-
-type PdfAddImageDoc = {
-  addPage(): void;
-  addImage(
-    imageData: string | HTMLCanvasElement,
-    format: string,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-  ): void;
-};
-
 function shareExportBaseName(articles: NewsArticle[]): string {
   if (articles.length > 1) return `tnews-selection-${articles.length}`;
   return slugFilename(articles[0]!.translatedTitle ?? articles[0]!.title);
@@ -253,7 +187,7 @@ function inAppBrowserLikely(): boolean {
   return /Instagram|FBAN|FBAV|FB_IAB|TikTok|Line\/|Snapchat/i.test(navigator.userAgent);
 }
 
-/** Same raster pipeline as PDF (strip + Arabic-safe fonts), saved as PNG for Story / in-app browsers. */
+/** Raster preview (strip + Arabic-safe fonts), saved as PNG. */
 async function downloadSharePreviewPng(
   root: HTMLElement | null,
   articles: NewsArticle[],
@@ -280,45 +214,6 @@ async function downloadSharePreviewPng(
   a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 5000);
   return true;
-}
-
-/**
- * One tall html2canvas bitmap scaled to a single A4 width becomes unreadably small.
- * Split the bitmap vertically across multiple pages at full printable width.
- */
-function addCanvasToPdfPaginated(pdf: PdfAddImageDoc, canvas: HTMLCanvasElement, layout: { margin: number; maxW: number; maxH: number; pageW: number }): void {
-  const { margin, maxW, maxH, pageW } = layout;
-  const cw = canvas.width;
-  const ch = canvas.height;
-  if (cw < 2 || ch < 2) {
-    throw new Error("EmptyShareCapture");
-  }
-
-  const fullHmm = (ch / cw) * maxW;
-  if (fullHmm <= maxH + 0.5) {
-    const x = (pageW - maxW) / 2;
-    const { data, format } = canvasToPdfRasterDataUrl(canvas);
-    pdf.addImage(data, format, x, margin, maxW, fullHmm);
-    return;
-  }
-
-  const pages = Math.ceil(fullHmm / maxH);
-  for (let i = 0; i < pages; i++) {
-    if (i > 0) pdf.addPage();
-    const sy = Math.floor((i * ch) / pages);
-    const syNext = Math.floor(((i + 1) * ch) / pages);
-    const sh = Math.max(1, syNext - sy);
-    const piece = document.createElement("canvas");
-    piece.width = cw;
-    piece.height = sh;
-    const ctx = piece.getContext("2d");
-    if (!ctx) throw new Error("NoCanvas2d");
-    ctx.drawImage(canvas, 0, sy, cw, sh, 0, 0, cw, sh);
-    const hMm = (sh / cw) * maxW;
-    const x = (pageW - maxW) / 2;
-    const { data, format } = canvasToPdfRasterDataUrl(piece);
-    pdf.addImage(data, format, x, margin, maxW, hMm);
-  }
 }
 
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
@@ -610,71 +505,43 @@ type ShareLabels = {
   title: string;
   preview: string;
   close: string;
-  story: string;
-  pdf: string;
-  pdfBusy: string;
+  photo: string;
+  photoBusy: string;
   preparing: string;
-  shareUnavailable: string;
-  pdfFail: string;
-  downloadPng: string;
-  downloadPngBusy: string;
   downloadFail: string;
-  /** Shown when Web Share fails but PNG was saved (e.g. Instagram in-app browser). */
-  shareSavedAsPng: string;
-  /** Shown when jsPDF fails but PNG was saved. */
-  pdfSavedAsPng: string;
+  downloadOk: string;
 };
 
 const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   ar: {
-    title: "مشاركة المقال",
-    preview: "معاينة بنمط العرض الحالي",
+    title: "حفظ كصورة",
+    preview: "معاينة ثم تنزيل الصورة بنمط العرض الحالي",
     close: "إغلاق",
-    story: "مشاركة (قصة)",
-    pdf: "تنزيل PDF",
-    pdfBusy: "جاري PDF…",
-    preparing: "جاري تجهيز المشاركة…",
-    shareUnavailable: "المشاركة غير متاحة في هذا المتصفح (مثل متصفح إنستغرام). استخدم «صورة للقصة» أو افتح الموقع في سفاري/كروم.",
-    pdfFail: "تعذر إنشاء PDF.",
-    downloadPng: "صورة للقصة (تحميل)",
-    downloadPngBusy: "جاري الصورة…",
+    photo: "تنزيل الصورة",
+    photoBusy: "جاري تجهيز الصورة…",
+    preparing: "جاري تجهيز الصورة…",
     downloadFail: "تعذر حفظ الصورة.",
-    shareSavedAsPng: "تم تحميل صورة المعاينة — افتحها من التحميلات أو الصور ثم أضفها إلى القصة.",
-    pdfSavedAsPng: "تعذر PDF — تم تحميل نفس المعاينة كصورة PNG بدلا منه.",
+    downloadOk: "تم تنزيل الصورة.",
   },
   fr: {
-    title: "Partager l’article",
-    preview: "Aperçu au style actuel",
+    title: "Enregistrer en image",
+    preview: "Aperçu puis téléchargement de l’image au style actuel",
     close: "Fermer",
-    story: "Partager (Story)",
-    pdf: "Télécharger PDF",
-    pdfBusy: "PDF…",
-    preparing: "Préparation du partage…",
-    shareUnavailable:
-      "Partage indisponible dans ce navigateur (ex. navigateur intégré Instagram). Utilisez « Image Story » ou ouvrez le site dans Safari/Chrome.",
-    pdfFail: "Impossible de créer le PDF.",
-    downloadPng: "Image Story (télécharger)",
-    downloadPngBusy: "Image…",
+    photo: "Télécharger l’image",
+    photoBusy: "Préparation de l’image…",
+    preparing: "Préparation de l’image…",
     downloadFail: "Impossible d’enregistrer l’image.",
-    shareSavedAsPng: "Image d’aperçu téléchargée — ajoutez-la à votre Story depuis Photos / Fichiers.",
-    pdfSavedAsPng: "PDF impossible — la même maquette a été téléchargée en PNG.",
+    downloadOk: "Image téléchargée.",
   },
   en: {
-    title: "Share article",
-    preview: "Preview in current theme",
+    title: "Save as image",
+    preview: "Preview then download the image in the current theme",
     close: "Close",
-    story: "Share (Story)",
-    pdf: "Download PDF",
-    pdfBusy: "PDF…",
-    preparing: "Preparing share…",
-    shareUnavailable:
-      "Sharing isn’t available in this browser (e.g. Instagram’s in-app browser). Use “Story image” or open the site in Safari/Chrome.",
-    pdfFail: "Could not create PDF.",
-    downloadPng: "Story image (download)",
-    downloadPngBusy: "Image…",
+    photo: "Download image",
+    photoBusy: "Preparing image…",
+    preparing: "Preparing image…",
     downloadFail: "Could not save the image.",
-    shareSavedAsPng: "Preview image downloaded — add it to your Story from Photos/Files.",
-    pdfSavedAsPng: "PDF failed — the same layout was downloaded as a PNG instead.",
+    downloadOk: "Image downloaded.",
   },
 };
 
@@ -892,12 +759,11 @@ export function ShareArticleDialog({
   captureTheme: ThemeMode;
   uiLang: "ar" | "fr" | "en";
   onClose: () => void;
-  /** When set, run story share (phone) or PDF export once after preview is painted, then close. */
-  autoExecute?: "story" | "pdf";
+  /** When set, download the preview image once after paint, then close (e.g. mobile double-tap). */
+  autoExecute?: "photo";
 }) {
   const previewRef = useRef<HTMLDivElement>(null);
-  const [pdfBusy, setPdfBusy] = useState(false);
-  const [pngBusy, setPngBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [narrow, setNarrow] = useState(false);
@@ -912,139 +778,30 @@ export function ShareArticleDialog({
     return () => mq.removeEventListener("change", apply);
   }, []);
 
-  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-  const preferStory = narrow && canShare;
   const compactCapture = useMemo(() => narrow || inAppBrowserLikely(), [narrow]);
   const btnPrimary =
     "rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 disabled:opacity-50";
-  const btnSecondary =
-    "theme-mode-toggle rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-50";
 
-  const handleShareStory = useCallback(async (): Promise<boolean> => {
+  const handleDownloadPhoto = useCallback(async (): Promise<boolean> => {
     setErr(null);
     setInfo(null);
-    const headline = articles
-      .map((a) => a.translatedTitle ?? a.title)
-      .join(" · ")
-      .slice(0, 200);
-    const text = articles
-      .map((a) => [a.sourceLabel, a.summary].filter(Boolean).join("\n"))
-      .join("\n\n")
-      .slice(0, 4000);
-    const el = previewRef.current;
-    try {
-      if (typeof document !== "undefined" && document.fonts?.ready) {
-        await document.fonts.ready;
-      }
-      if (canShare) {
-        try {
-          if (el) {
-            const canvas = await captureSharePreviewToCanvas(el, canvasBackgroundForTheme(captureTheme));
-            const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.92));
-            if (blob && typeof navigator.canShare === "function") {
-              const file = new File([blob], `${shareExportBaseName(articles)}.png`, { type: "image/png" });
-              if (navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                  files: [file],
-                  title: headline,
-                  text: text || headline,
-                });
-                return true;
-              }
-            }
-          }
-          await navigator.share({
-            title: headline,
-            text: text || headline,
-            url: articles[0]?.link,
-          });
-          return true;
-        } catch (e) {
-          if ((e as Error).name === "AbortError") return true;
-        }
-      }
-      const saved = await downloadSharePreviewPng(el, articles, captureTheme, compactCapture);
-      if (saved) {
-        setInfo(labels.shareSavedAsPng);
-        return true;
-      }
-      setErr(labels.shareUnavailable);
-      return false;
-    } catch {
-      const saved = await downloadSharePreviewPng(el, articles, captureTheme, compactCapture);
-      if (saved) {
-        setInfo(labels.shareSavedAsPng);
-        return true;
-      }
-      setErr(labels.shareUnavailable);
-      return false;
-    }
-  }, [articles, canShare, captureTheme, compactCapture, labels.shareSavedAsPng, labels.shareUnavailable]);
-
-  const handleDownloadPng = useCallback(async (): Promise<void> => {
-    setErr(null);
-    setInfo(null);
-    setPngBusy(true);
+    setPhotoBusy(true);
     try {
       const el = previewRef.current;
       const ok = await downloadSharePreviewPng(el, articles, captureTheme, compactCapture);
-      if (!ok) setErr(labels.downloadFail);
+      if (ok) {
+        setInfo(labels.downloadOk);
+        return true;
+      }
+      setErr(labels.downloadFail);
+      return false;
     } catch {
       setErr(labels.downloadFail);
-    } finally {
-      setPngBusy(false);
-    }
-  }, [articles, captureTheme, compactCapture, labels.downloadFail]);
-
-  const handlePdf = useCallback(async (): Promise<boolean> => {
-    setErr(null);
-    setInfo(null);
-    setPdfBusy(true);
-    try {
-      if (typeof document !== "undefined" && document.fonts?.ready) {
-        await document.fonts.ready;
-      }
-      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-
-      const el = previewRef.current;
-      if (!el) {
-        setErr(labels.pdfFail);
-        return false;
-      }
-
-      const { default: jsPDF } = await import("jspdf");
-      const bg = canvasBackgroundForTheme(captureTheme);
-
-      const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 10;
-      const maxW = pageW - margin * 2;
-      const maxH = pageH - margin * 2;
-
-      const raw = await captureSharePreviewForPdf(el, bg, { compact: compactCapture });
-      const canvas = downscaleCanvasIfNeeded(raw, compactCapture ? 4000 : 7800);
-      addCanvasToPdfPaginated(pdf as PdfAddImageDoc, canvas, { margin, maxW, maxH, pageW });
-
-      pdf.save(`${shareExportBaseName(articles)}.pdf`);
-      return true;
-    } catch {
-      const el = previewRef.current;
-      try {
-        const ok = el ? await downloadSharePreviewPng(el, articles, captureTheme, compactCapture) : false;
-        if (ok) {
-          setInfo(labels.pdfSavedAsPng);
-          return true;
-        }
-      } catch {
-        /* ignore */
-      }
-      setErr(labels.pdfFail);
       return false;
     } finally {
-      setPdfBusy(false);
+      setPhotoBusy(false);
     }
-  }, [articles, captureTheme, compactCapture, labels.pdfFail, labels.pdfSavedAsPng]);
+  }, [articles, captureTheme, compactCapture, labels.downloadFail, labels.downloadOk]);
 
   const autoStarted = useRef(false);
   useEffect(() => {
@@ -1059,11 +816,7 @@ export function ShareArticleDialog({
         }
         await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
         if (cancelled) return;
-        if (autoExecute === "pdf") {
-          ok = await handlePdf();
-        } else {
-          ok = await handleShareStory();
-        }
+        ok = await handleDownloadPhoto();
       } finally {
         if (!cancelled) {
           setAutoBusy(false);
@@ -1075,7 +828,7 @@ export function ShareArticleDialog({
     return () => {
       cancelled = true;
     };
-  }, [autoExecute, handlePdf, handleShareStory, onClose]);
+  }, [autoExecute, handleDownloadPhoto, onClose]);
 
   return (
     <div
@@ -1129,30 +882,13 @@ export function ShareArticleDialog({
           {err && <p className="mt-3 text-center text-sm text-red-400">{err}</p>}
 
           <div className="relative z-10 mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
-            {canShare ? (
-              <button
-                type="button"
-                onClick={() => void handleShareStory()}
-                className={preferStory ? btnPrimary : btnSecondary}
-              >
-                {labels.story}
-              </button>
-            ) : null}
             <button
               type="button"
-              disabled={pdfBusy}
-              onClick={() => void handlePdf()}
-              className={preferStory ? btnSecondary : canShare ? btnSecondary : btnPrimary}
+              disabled={photoBusy}
+              onClick={() => void handleDownloadPhoto()}
+              className={btnPrimary}
             >
-              {pdfBusy ? labels.pdfBusy : labels.pdf}
-            </button>
-            <button
-              type="button"
-              disabled={pngBusy || pdfBusy}
-              onClick={() => void handleDownloadPng()}
-              className={canShare ? btnSecondary : "rounded-xl border border-emerald-500/50 bg-emerald-950/40 px-4 py-3 text-sm font-semibold text-emerald-100 disabled:opacity-50"}
-            >
-              {pngBusy ? labels.downloadPngBusy : labels.downloadPng}
+              {photoBusy ? labels.photoBusy : labels.photo}
             </button>
           </div>
         </div>

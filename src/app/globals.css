@@ -85,7 +85,7 @@ body {
     sans-serif;
 }
 
-/* Share / PDF capture: Arabic shaping (html2canvas rasterizes DOM fonts). */
+/* Share image capture: Arabic shaping (html2canvas rasterizes DOM fonts). */
 .share-preview-ar {
   font-family: var(--font-arabic-ui), "Noto Sans Arabic", Tahoma, "Segoe UI", sans-serif;
 }
@@ -98,7 +98,7 @@ body {
   font-family: var(--font-heritage-serif), Georgia, "Times New Roman", serif;
 }
 
-/* Vintage broadsheet share / PDF (reference: classic newspaper front) */
+/* Vintage broadsheet share export (reference: classic newspaper front) */
 .share-vintage-front {
   background-color: #fdf5e6;
 }

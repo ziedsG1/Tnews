@@ -243,7 +243,7 @@ export function HomeClient() {
   const [shareTarget, setShareTarget] = useState<{
     articles: NewsArticle[];
     theme: ThemeMode;
-    autoExecute?: "story" | "pdf";
+    autoExecute?: "photo";
   } | null>(null);
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
@@ -305,12 +305,12 @@ export function HomeClient() {
     const byLang = {
       ar: {
         searchPlaceholder: "بحث / Search",
-        shareHint: "انقر للتحديد — Ctrl أو ⌘ مع النقر لإضافة أكثر من خبر. نقرتان: مشاركة (قصة / PDF).",
+        shareHint: "انقر للتحديد — Ctrl أو ⌘ مع النقر لإضافة أكثر من خبر. نقرتان مزدوجتان: تنزيل صورة المعاينة.",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
         selectedTitle: "المحدد",
         selectHint: "انقر بطاقة للتحديد. Ctrl/⌘+نقر لتحديد عدة أخبار.",
-        pdfBundle: "PDF للمحدد",
+        selectionPhoto: "صورة للمحدد",
         clearSelection: "مسح التحديد",
         sourceLink: "المصدر الأصلي ↗",
         newsTitle: `أخبار ${activeCountry.names.ar}`,
@@ -318,12 +318,12 @@ export function HomeClient() {
       },
       fr: {
         searchPlaceholder: "Recherche / Search",
-        shareHint: "Clic pour sélectionner — Ctrl ou ⌘+clic pour multi-sélection. Double-clic : partage (Story / PDF).",
+        shareHint: "Clic pour sélectionner — Ctrl ou ⌘+clic pour multi-sélection. Double-clic : télécharger l’image d’aperçu.",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
         selectedTitle: "Sélection",
         selectHint: "Cliquez une carte. Ctrl/⌘+clic pour en choisir plusieurs.",
-        pdfBundle: "PDF sélection",
+        selectionPhoto: "Image de la sélection",
         clearSelection: "Effacer la sélection",
         sourceLink: "Lire sur le site d'origine ↗",
         newsTitle: `Actualités ${activeCountry.names.fr}`,
@@ -331,12 +331,12 @@ export function HomeClient() {
       },
       en: {
         searchPlaceholder: "Search / بحث",
-        shareHint: "Click to select — Ctrl or ⌘+click for multi-select. Double-click: share (Story / PDF).",
+        shareHint: "Click to select — Ctrl or ⌘+click for multi-select. Double-click: download preview image.",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
         selectedTitle: "Selection",
         selectHint: "Click a card. Ctrl/⌘+click to pick several articles.",
-        pdfBundle: "PDF of selection",
+        selectionPhoto: "Selection image",
         clearSelection: "Clear selection",
         sourceLink: "Read on original source ↗",
         newsTitle: `${activeCountry.names.en} news`,
@@ -458,12 +458,7 @@ export function HomeClient() {
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
     const phoneLike =
       w <= 768 && /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry/i.test(ua);
-    const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-    const autoExecute: "story" | "pdf" | undefined = phoneLike
-      ? canShare
-        ? "story"
-        : undefined
-      : "pdf";
+    const autoExecute: "photo" | undefined = phoneLike ? "photo" : undefined;
     setShareTarget({ articles: [article], theme, autoExecute });
   }, [theme]);
 
@@ -630,7 +625,7 @@ export function HomeClient() {
                   onClick={() => openShareBundle()}
                   className="rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-md transition hover:brightness-110"
                 >
-                  {t.pdfBundle}
+                  {t.selectionPhoto}
                 </button>
                 <button
                   type="button"
