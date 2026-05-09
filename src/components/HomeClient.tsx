@@ -403,12 +403,8 @@ export function HomeClient() {
   const openShareBundle = useCallback(() => {
     const list = selectedArticlesList.slice(0, 15);
     if (list.length === 0) return;
-    const w = typeof window !== "undefined" ? window.innerWidth : 1024;
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    const phoneLike =
-      w <= 768 && /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry/i.test(ua);
-    const autoExecute: "story" | "pdf" | undefined = phoneLike ? undefined : "pdf";
-    setShareTarget({ articles: list, theme, autoExecute });
+    /** Always show the dialog so Story / PDF buttons work; single-article double-click may still auto-export. */
+    setShareTarget({ articles: list, theme, autoExecute: undefined });
   }, [selectedArticlesList, theme]);
 
   const toggleFilterGroup = useCallback((id: TopicFilterGroup) => {
@@ -641,9 +637,14 @@ export function HomeClient() {
               </div>
             )}
             {selectedOrder.length > 1 && (
-              <ul className="theme-muted mt-3 max-h-32 space-y-1 overflow-y-auto text-[11px] leading-snug">
+              <ul className="theme-muted mt-3 max-h-32 space-y-1 overflow-y-auto text-[11px] leading-snug" dir="auto">
                 {selectedArticlesList.map((a) => (
-                  <li key={a.id} className="truncate border-b border-white/5 pb-1" dir={a.locale === "ar" ? "rtl" : "ltr"} lang={a.locale === "ar" ? "ar" : "fr"}>
+                  <li
+                    key={a.id}
+                    className="truncate border-b border-white/5 pb-1 [unicode-bidi:isolate]"
+                    dir="auto"
+                    lang={a.locale === "ar" ? "ar" : "fr"}
+                  >
                     {a.translatedTitle ?? a.title}
                   </li>
                 ))}

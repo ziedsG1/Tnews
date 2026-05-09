@@ -56,6 +56,16 @@ function clipTeaser(s: string, max = 210): string {
   return `${t.slice(0, max - 1).trim()}…`;
 }
 
+/** `text-transform: uppercase` breaks Arabic glyph shaping in several browsers. */
+function heritageUpper(rtl: boolean): string {
+  return rtl ? "normal-case" : "uppercase";
+}
+
+/** `text-justify` interacts badly with RTL Arabic (letters can look scrambled). */
+function heritageAlign(rtl: boolean): string {
+  return rtl ? "text-start" : "text-justify";
+}
+
 function firstSentence(text: string | null, max = 160): string {
   if (!text?.trim()) return "";
   const t = text.trim();
@@ -92,7 +102,9 @@ function ShareHeroImage({ url, rtl, caption }: { url: string | null; rtl: boolea
               <span className="text-3xl opacity-40" aria-hidden>
                 ◫
               </span>
-              <span className="text-[9px] font-bold uppercase tracking-wide text-stone-400">
+              <span
+                className={`text-[9px] font-bold tracking-wide text-stone-400 ${rtl ? "normal-case" : "uppercase"}`}
+              >
                 {rtl ? "لا صورة في الخلاصة" : "No wire photo"}
               </span>
             </div>
@@ -100,7 +112,9 @@ function ShareHeroImage({ url, rtl, caption }: { url: string | null; rtl: boolea
         </div>
       </div>
       <figcaption
-        className="share-heritage-body mt-2 max-w-[14rem] text-center text-[8px] font-black uppercase leading-tight tracking-[0.18em] text-[#1a120c]"
+        className={`share-heritage-body mt-2 max-w-[14rem] text-center text-[8px] font-black leading-tight text-[#1a120c] ${
+          rtl ? "normal-case tracking-normal" : "uppercase tracking-[0.18em]"
+        }`}
         dir={rtl ? "rtl" : "ltr"}
       >
         {caption}
@@ -189,49 +203,75 @@ function ShareSelectionVintageBroadsheet({
           </p>
           <div className="mt-2 h-px w-[min(100%,17rem)] bg-black" />
           <div className="mt-1 h-0.5 w-[min(100%,12rem)] bg-black" />
-          <p className="mt-2.5 max-w-[99%] text-[10px] font-black uppercase leading-snug tracking-[0.05em] text-black sm:text-[11px]">
+          <p
+            className={`mt-2.5 max-w-[99%] text-[10px] font-black leading-snug tracking-[0.05em] text-black sm:text-[11px] ${heritageUpper(rtl)}`}
+          >
             {strap}
           </p>
-          <p className="mt-1.5 text-[8px] font-semibold uppercase tracking-widest text-[#3d2f1f]">{selectionSub}</p>
+          <p
+            className={`mt-1.5 text-[8px] font-semibold tracking-widest text-[#3d2f1f] ${uiLang === "ar" ? "normal-case" : "uppercase"}`}
+            dir={uiLang === "ar" ? "rtl" : "ltr"}
+            lang={uiLang === "ar" ? "ar" : uiLang === "fr" ? "fr" : "en"}
+          >
+            {selectionSub}
+          </p>
         </header>
 
         <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1.05fr)_auto_minmax(0,1.05fr)] sm:items-start sm:gap-2">
           <div className="order-2 max-h-[28rem] overflow-hidden sm:order-1">
-            <p className="share-heritage-body mb-1 text-[7px] font-black uppercase tracking-[0.2em] text-[#5c4a3a]">
+            <p
+              className={`share-heritage-body mb-1 text-[7px] font-black tracking-[0.2em] text-[#5c4a3a] ${heritageUpper(rtl)}`}
+            >
               {rtl ? "العناوين" : "Headlines"}
             </p>
             <ol className="list-decimal space-y-1.5 ps-3.5 text-[9px] leading-[1.45] text-[#1a120c] sm:text-[8.5px]">
-              {articles.map((a) => (
-                <li key={a.id} className="text-justify" dir={a.locale === "ar" ? "rtl" : "ltr"} lang={a.locale === "ar" ? "ar" : "fr"}>
-                  <span className={`font-bold ${a.locale === "ar" ? "" : "share-heritage-body"}`}>
-                    {a.translatedTitle ?? a.title}
-                  </span>
-                  <span className="mt-0.5 block text-[7.5px] font-semibold uppercase tracking-wide text-[#5c4a3a]">
-                    {a.sourceLabel} · {formatShareDate(a.pubDate, a.locale)}
-                  </span>
-                </li>
-              ))}
+              {articles.map((a) => {
+                const arItem = a.locale === "ar";
+                return (
+                  <li
+                    key={a.id}
+                    className={`[unicode-bidi:isolate] ${heritageAlign(arItem)}`}
+                    dir="auto"
+                    lang={arItem ? "ar" : "fr"}
+                  >
+                    <span className={`font-bold ${arItem ? "" : "share-heritage-body"}`}>
+                      {a.translatedTitle ?? a.title}
+                    </span>
+                    <span
+                      className={`mt-0.5 block text-[7.5px] font-semibold tracking-wide text-[#5c4a3a] ${arItem ? "normal-case" : "uppercase"}`}
+                    >
+                      {a.sourceLabel} · {formatShareDate(a.pubDate, a.locale)}
+                    </span>
+                  </li>
+                );
+              })}
             </ol>
           </div>
           <div className="order-1 flex justify-center sm:order-2">
             <ShareHeroImage url={photoUrl} rtl={rtl} caption={wireCaption} />
           </div>
           <div
-            className={`order-3 max-h-[28rem] overflow-hidden text-justify text-[9px] leading-[1.55] text-[#1a120c] sm:text-[8.5px] ${!rtl ? "share-heritage-body" : ""}`}
+            className={`order-3 max-h-[28rem] overflow-hidden text-[9px] leading-[1.55] text-[#1a120c] sm:text-[8.5px] ${heritageAlign(rtl)} ${!rtl ? "share-heritage-body" : ""}`}
             style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
           >
-            <p className="share-heritage-body mb-1 text-[7px] font-black uppercase tracking-[0.2em] text-[#5c4a3a]">
+            <p
+              className={`share-heritage-body mb-1 text-[7px] font-black tracking-[0.2em] text-[#5c4a3a] ${heritageUpper(rtl)}`}
+            >
               {rtl ? "برقية" : "Wire"}
             </p>
             <p className="border-b border-black/15 pb-2">{leftBlurb || "—"}</p>
-            <p className="share-heritage-body mb-1 mt-2 text-[7px] font-black uppercase tracking-[0.2em] text-[#5c4a3a]">
+            <p
+              className={`share-heritage-body mb-1 mt-2 text-[7px] font-black tracking-[0.2em] text-[#5c4a3a] ${heritageUpper(rtl)}`}
+            >
               {rtl ? "متابعة" : "Follow"}
             </p>
             <p>{rightBlurb || "—"}</p>
           </div>
         </section>
 
-        <div className="mt-4 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-1.5 text-center text-[8px] font-bold uppercase tracking-widest text-[#3d2f1f]">
+        <div
+          className={`mt-4 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-1.5 text-center text-[8px] font-bold tracking-widest text-[#3d2f1f] ${heritageUpper(rtl)}`}
+        >
           {siteLabel}
           <span className="mx-2 text-[#8b7355]">·</span>
           {articles.length} {rtl ? "مقالات" : "articles"}
@@ -258,10 +298,22 @@ function VintageNewsCase({
       dir={rtl ? "rtl" : "ltr"}
     >
       {kicker ? (
-        <p className="share-heritage-body mb-1 text-[7px] font-bold uppercase tracking-[0.28em] text-[#5c4a3a]">{kicker}</p>
+        <p
+          className={`share-heritage-body mb-1 text-[7px] font-bold tracking-[0.28em] text-[#5c4a3a] ${heritageUpper(rtl)}`}
+        >
+          {kicker}
+        </p>
       ) : null}
-      <p className="share-heritage-body text-[10px] font-black uppercase leading-snug tracking-wide text-[#0c0806]">{title}</p>
-      <p className={`mt-2 text-[9px] leading-[1.5] text-[#2a2118] ${rtl ? "" : "share-heritage-body"}`}>{body || "—"}</p>
+      <p
+        className={`share-heritage-body text-[10px] font-black leading-snug tracking-wide text-[#0c0806] ${heritageUpper(rtl)}`}
+      >
+        {title}
+      </p>
+      <p
+        className={`mt-2 text-[9px] leading-[1.5] text-[#2a2118] ${heritageAlign(rtl)} ${rtl ? "" : "share-heritage-body"}`}
+      >
+        {body || "—"}
+      </p>
     </div>
   );
 }
@@ -376,11 +428,15 @@ function SharePreview({
             </p>
             <div className="mt-2 h-px w-[min(100%,18rem)] bg-black" />
             <div className="mt-1 h-0.5 w-[min(100%,14rem)] bg-black" />
-            <p className="mt-3 max-w-[99%] text-[10px] font-black uppercase leading-[1.35] tracking-[0.06em] text-black sm:text-[11px]">
+            <p
+              className={`mt-3 max-w-[99%] text-[10px] font-black leading-[1.35] tracking-[0.06em] text-black sm:text-[11px] ${heritageUpper(rtl)}`}
+            >
               {killerLine}
             </p>
-            <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.32em] text-[#0c0806]">{article.sourceLabel}</p>
-            <p className="mt-1 text-[8px] font-semibold uppercase tracking-widest text-[#3d2f1f]">{dateStr}</p>
+            <p className={`mt-2 text-[9px] font-bold tracking-[0.32em] text-[#0c0806] ${heritageUpper(rtl)}`}>
+              {article.sourceLabel}
+            </p>
+            <p className={`mt-1 text-[8px] font-semibold tracking-widest text-[#3d2f1f] ${heritageUpper(rtl)}`}>{dateStr}</p>
           </header>
 
           <section
@@ -391,7 +447,7 @@ function SharePreview({
             }`}
           >
             <div
-              className={`text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
+              className={`${heritageAlign(rtl)} text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
               style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
             >
               {leadL || (rtl ? "…" : "—")}
@@ -402,7 +458,7 @@ function SharePreview({
               </div>
             ) : null}
             <div
-              className={`text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
+              className={`${heritageAlign(rtl)} text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
               style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
             >
               {leadR || (rtl ? "…" : "—")}
@@ -410,7 +466,9 @@ function SharePreview({
           </section>
 
           <div className="share-vintage-rule-thick my-4 border-y-2 border-black bg-[#f4ead4] px-2 py-2.5 text-center sm:px-4">
-            <p className="text-balance text-[11px] font-black uppercase leading-tight tracking-[0.04em] text-[#0c0806] sm:text-[12px]">
+            <p
+              className={`text-balance text-[11px] font-black leading-tight tracking-[0.04em] text-[#0c0806] sm:text-[12px] ${heritageUpper(rtl)}`}
+            >
               {killerLine}
             </p>
           </div>
@@ -435,11 +493,13 @@ function SharePreview({
               className={`mt-4 border-t-2 border-black pt-3 text-[10px] leading-[1.58] sm:columns-3 sm:text-[9.5px] ${!rtl ? "share-heritage-body" : ""}`}
               style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
             >
-              <p className="text-justify">{article.summary}</p>
+              <p className={heritageAlign(rtl)}>{article.summary}</p>
             </div>
           ) : null}
 
-          <div className="mt-4 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-[#3d2f1f] sm:text-[10px]">
+          <div
+            className={`mt-4 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-2 text-center text-[9px] font-bold tracking-widest text-[#3d2f1f] sm:text-[10px] ${heritageUpper(rtl)}`}
+          >
             {article.topic}
             <span className="mx-2 text-[#8b7355]">·</span>
             <span className="share-site-latin normal-case tracking-normal text-[#5c4a3a]">{siteLabel}</span>
