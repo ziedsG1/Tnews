@@ -174,6 +174,7 @@ async function captureWithHtmlToImage(
   host.appendChild(inner);
   document.body.appendChild(host);
   try {
+    await waitForImagesInRoot(inner);
     const { toJpeg } = await import("html-to-image");
     const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2;
     const pixelRatio = opts?.pixelRatio ?? Math.min(2.5, dpr);
@@ -301,6 +302,9 @@ async function captureSharePreviewAsJpegBlob(
   compact: boolean,
 ): Promise<Blob | null> {
   if (!root) return null;
+  const storyFrame = root.dataset.instagramStory === "1";
+  const prevStoryCss = root.style.cssText;
+
   if (typeof document !== "undefined" && document.fonts?.ready) {
     try {
       await Promise.race([document.fonts.ready, new Promise<void>((r) => window.setTimeout(() => r(), 2000))]);
@@ -311,23 +315,44 @@ async function captureSharePreviewAsJpegBlob(
   await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   await new Promise<void>((r) => window.setTimeout(() => r(), compact ? 120 : 0));
   const bg = canvasBackgroundForTheme(captureTheme);
-  await waitForImagesInRoot(root);
-
-  const storyFrame = root.dataset.instagramStory === "1";
   const storyPixelRatio = Math.min(3, typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2);
 
-  if (prefersHtmlToImageCapture()) {
-    root.scrollTop = 0;
-    const hi = await captureWithHtmlToImage(root, captureTheme, storyFrame ? { pixelRatio: storyPixelRatio } : undefined);
-    if (hi) return hi;
-  }
-
   try {
-    const raw = await capturePreviewRootToCanvas(root, bg, compact);
-    const canvas = downscaleCanvasIfNeeded(raw, compact ? 3600 : 7800);
-    return await canvasToJpegBlob(canvas, 0.88);
-  } catch {
-    return null;
+    // Far off-screen frames are often unpainted or lazy-skipped (black hero). Pin in the viewport only while capturing.
+    if (storyFrame) {
+      root.style.setProperty("position", "fixed", "important");
+      root.style.setProperty("left", "0", "important");
+      root.style.setProperty("top", "0", "important");
+      root.style.setProperty("width", "360px", "important");
+      root.style.setProperty("height", "640px", "important");
+      root.style.setProperty("max-width", "360px", "important");
+      root.style.setProperty("max-height", "640px", "important");
+      root.style.setProperty("z-index", "2147483640", "important");
+      root.style.setProperty("pointer-events", "none", "important");
+      root.style.setProperty("opacity", "0.02", "important");
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      await new Promise<void>((r) => window.setTimeout(() => r(), 120));
+    }
+
+    await waitForImagesInRoot(root);
+
+    if (prefersHtmlToImageCapture()) {
+      root.scrollTop = 0;
+      const hi = await captureWithHtmlToImage(root, captureTheme, storyFrame ? { pixelRatio: storyPixelRatio } : undefined);
+      if (hi) return hi;
+    }
+
+    try {
+      const raw = await capturePreviewRootToCanvas(root, bg, compact);
+      const canvas = downscaleCanvasIfNeeded(raw, compact ? 3600 : 7800);
+      return await canvasToJpegBlob(canvas, 0.88);
+    } catch {
+      return null;
+    }
+  } finally {
+    if (storyFrame) {
+      root.style.cssText = prevStoryCss;
+    }
   }
 }
 
@@ -643,6 +668,8 @@ function ShareStoryCapture({
             <img
               src={shareImg}
               alt=""
+              loading="eager"
+              decoding="async"
               referrerPolicy="no-referrer"
               className="h-full w-full object-cover object-center"
             />
