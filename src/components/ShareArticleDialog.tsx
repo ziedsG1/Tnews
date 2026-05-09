@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import type { ThemeMode } from "@/lib/uiTheme";
+import { proxiedArticleImageUrl } from "@/lib/shareImageUrl";
 import { BrandLogo } from "@/components/BrandLogo";
 
 function formatShareDate(iso: string | null, locale: "ar" | "fr"): string {
@@ -407,6 +408,7 @@ function restAfterFirstSentence(text: string | null, max = 220): string {
 
 function ShareHeroImage({ url, rtl, caption }: { url: string | null; rtl: boolean; caption: string }) {
   const [broken, setBroken] = useState(false);
+  const sameOriginPath = Boolean(url?.startsWith("/"));
   return (
     <figure className="flex flex-col items-center">
       <div className="share-masthead-photo relative max-w-[13.5rem] shrink-0 bg-[#ebe3d4] p-1 sm:max-w-[15rem]">
@@ -416,7 +418,7 @@ function ShareHeroImage({ url, rtl, caption }: { url: string | null; rtl: boolea
               src={url}
               alt=""
               referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
+              crossOrigin={sameOriginPath ? undefined : "anonymous"}
               onError={() => setBroken(true)}
               className="mx-auto block max-h-[12.5rem] w-full object-cover object-top grayscale contrast-[1.08] sepia-[0.12]"
             />
@@ -568,6 +570,7 @@ function SharePreview({
   const headline = article.translatedTitle ?? article.title;
   const dateStr = formatShareDate(article.pubDate, article.locale);
   const ar = rtl ? "share-preview-ar" : "";
+  const shareImg = proxiedArticleImageUrl(article.imageUrl);
 
   if (captureTheme === "broadsheet") {
     const killerLine = rtl ? headline : headline.toLocaleUpperCase("fr-FR");
@@ -586,7 +589,7 @@ function SharePreview({
     const extraKicker = rtl ? "عاجل" : "EXTRA";
     const topicCaseTitle = rtl ? article.topic : article.topic.toLocaleUpperCase("fr-FR");
     const sourceCaseTitle = rtl ? article.sourceLabel : article.sourceLabel.toLocaleUpperCase("fr-FR");
-    const hasWirePhoto = Boolean(article.imageUrl);
+    const hasWirePhoto = Boolean(shareImg);
 
     return (
       <div
@@ -643,7 +646,7 @@ function SharePreview({
             </div>
             {hasWirePhoto ? (
               <div className="flex justify-center">
-                <ShareHeroImage url={article.imageUrl} rtl={rtl} caption={wireCaption} />
+                <ShareHeroImage url={shareImg} rtl={rtl} caption={wireCaption} />
               </div>
             ) : null}
             <div
@@ -711,6 +714,16 @@ function SharePreview({
         <p className="mt-1 text-center text-[10px] font-semibold text-[#6b5344]">{article.sourceLabel}</p>
         <hr className="my-3 border-[#3d2f1f]/40" />
         <h2 className={`text-center text-lg font-bold leading-snug ${rtl ? "" : "font-serif"}`}>{headline}</h2>
+        {shareImg ? (
+          <div className="mt-3 flex justify-center">
+            <img
+              src={shareImg}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="max-h-52 w-full max-w-md rounded border border-[#3d2f1f]/40 object-cover"
+            />
+          </div>
+        ) : null}
         <p className="theme-muted mt-2 text-center text-[11px]">{dateStr}</p>
         {article.summary ? (
           <p className={`mt-3 text-justify text-sm leading-relaxed text-[#3d2f1f] ${rtl ? "" : "font-serif"}`}>{article.summary}</p>
@@ -731,6 +744,16 @@ function SharePreview({
         <p className="mt-1 text-center text-xs text-slate-600">{article.sourceLabel}</p>
         <hr className="my-3 border-slate-200" />
         <h2 className="text-center text-lg font-semibold leading-snug">{headline}</h2>
+        {shareImg ? (
+          <div className="mt-3 flex justify-center">
+            <img
+              src={shareImg}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="max-h-52 w-full max-w-md rounded-lg border border-slate-200 object-cover"
+            />
+          </div>
+        ) : null}
         <p className="mt-2 text-center text-xs text-slate-500">{dateStr}</p>
         {article.summary ? <p className="mt-3 text-sm leading-relaxed text-slate-600">{article.summary}</p> : null}
         <p className="mt-3 text-center text-xs font-medium text-slate-500">{article.topic}</p>
@@ -748,6 +771,16 @@ function SharePreview({
       <p className="mt-1 text-center text-xs text-slate-400">{article.sourceLabel}</p>
       <hr className="my-3 border-white/10" />
       <h2 className="text-center text-lg font-semibold leading-snug text-white">{headline}</h2>
+      {shareImg ? (
+        <div className="mt-3 flex justify-center">
+          <img
+            src={shareImg}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="max-h-52 w-full max-w-md rounded-lg border border-white/15 object-cover"
+          />
+        </div>
+      ) : null}
       <p className="mt-2 text-center text-xs text-slate-500">{dateStr}</p>
       {article.summary ? <p className="mt-3 text-sm leading-relaxed text-slate-400">{article.summary}</p> : null}
       <p className="mt-3 text-center text-xs uppercase text-slate-500">{article.topic}</p>
