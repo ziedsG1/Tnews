@@ -377,10 +377,15 @@ export function HomeClient() {
     };
   }, [searchedArticles]);
 
+  /**
+   * Resolve picks against topic-filtered articles only — not the search box.
+   * Otherwise a search that hides selected cards yields an empty list and
+   * “PDF للمحدد” / bundle share does nothing while selection ids still look active.
+   */
   const selectedArticlesList = useMemo(() => {
-    const map = new Map(searchedArticles.map((a) => [a.id, a]));
+    const map = new Map(filteredArticles.map((a) => [a.id, a]));
     return selectedOrder.map((id) => map.get(id)).filter(Boolean) as NewsArticle[];
-  }, [selectedOrder, searchedArticles]);
+  }, [selectedOrder, filteredArticles]);
 
   const primaryArticle = useMemo(() => {
     if (selectedArticlesList.length === 0) return null;
