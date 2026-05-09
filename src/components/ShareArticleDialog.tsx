@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import type { ThemeMode } from "@/lib/uiTheme";
+import { BrandLogo } from "@/components/BrandLogo";
 
 function formatShareDate(iso: string | null, locale: "ar" | "fr"): string {
   if (!iso) return locale === "ar" ? "—" : "—";
@@ -28,8 +29,109 @@ function slugFilename(title: string): string {
 function canvasBackgroundForTheme(theme: ThemeMode): string {
   if (theme === "dark") return "#0b0d14";
   if (theme === "light") return "#ffffff";
-  if (theme === "broadsheet") return "#fdf6e8";
+  if (theme === "broadsheet") return "#fdf5e6";
   return "#fffdf5";
+}
+
+/** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
+function splitSummaryForColumns(text: string | null, rtl: boolean): [string, string] {
+  if (!text) return ["", ""];
+  const t = text.trim();
+  if (t.length < 24) return [t, ""];
+  const mid = Math.max(20, Math.floor(t.length * 0.46));
+  if (rtl) {
+    const after = t.indexOf(" ", mid);
+    const before = t.lastIndexOf(" ", mid);
+    const cut = after > mid && after < mid + 36 ? after : before > 12 ? before : mid;
+    return [t.slice(0, cut).trim(), t.slice(cut).trim()];
+  }
+  const space = t.lastIndexOf(" ", mid);
+  const cut = space > 18 ? space : mid;
+  return [t.slice(0, cut).trim(), t.slice(cut).trim()];
+}
+
+function clipTeaser(s: string, max = 210): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1).trim()}…`;
+}
+
+function firstSentence(text: string | null, max = 160): string {
+  if (!text?.trim()) return "";
+  const t = text.trim();
+  const end = t.search(/[.!?؟]\s/);
+  const chunk = end > 24 ? t.slice(0, end + 1) : t;
+  return clipTeaser(chunk, max);
+}
+
+function restAfterFirstSentence(text: string | null, max = 220): string {
+  if (!text?.trim()) return "";
+  const t = text.trim();
+  const end = t.search(/[.!?؟]\s/);
+  if (end < 12) return clipTeaser(t, max);
+  return clipTeaser(t.slice(end + 1).trim(), max);
+}
+
+function ShareHeroImage({ url, rtl, caption }: { url: string | null; rtl: boolean; caption: string }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <figure className="flex flex-col items-center">
+      <div className="share-masthead-photo relative max-w-[13.5rem] shrink-0 bg-[#ebe3d4] p-1 sm:max-w-[15rem]">
+        <div className="share-masthead-photo-inner overflow-hidden bg-[#1a1510]">
+          {url && !broken ? (
+            <img
+              src={url}
+              alt=""
+              referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
+              onError={() => setBroken(true)}
+              className="mx-auto block max-h-[12.5rem] w-full object-cover object-top grayscale contrast-[1.08] sepia-[0.12]"
+            />
+          ) : (
+            <div className="flex h-48 w-[11.5rem] flex-col items-center justify-center gap-2 px-3 text-center text-stone-300">
+              <span className="text-3xl opacity-40" aria-hidden>
+                ◫
+              </span>
+              <span className="text-[9px] font-bold uppercase tracking-wide text-stone-400">
+                {rtl ? "لا صورة في الخلاصة" : "No wire photo"}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      <figcaption
+        className="share-heritage-body mt-2 max-w-[14rem] text-center text-[8px] font-black uppercase leading-tight tracking-[0.18em] text-[#1a120c]"
+        dir={rtl ? "rtl" : "ltr"}
+      >
+        {caption}
+      </figcaption>
+    </figure>
+  );
+}
+
+function VintageNewsCase({
+  kicker,
+  title,
+  body,
+  rtl,
+}: {
+  kicker?: string;
+  title: string;
+  body: string;
+  rtl: boolean;
+}) {
+  return (
+    <div
+      className="share-vintage-case flex flex-col border-2 border-[#0c0806] bg-[#fffdf7] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+      dir={rtl ? "rtl" : "ltr"}
+    >
+      {kicker ? (
+        <p className="share-heritage-body mb-1 text-[7px] font-bold uppercase tracking-[0.28em] text-[#5c4a3a]">{kicker}</p>
+      ) : null}
+      <p className="share-heritage-body text-[10px] font-black uppercase leading-snug tracking-wide text-[#0c0806]">{title}</p>
+      <p className={`mt-2 text-[9px] leading-[1.5] text-[#2a2118] ${rtl ? "" : "share-heritage-body"}`}>{body || "—"}</p>
+    </div>
+  );
 }
 
 type ShareLabels = {
@@ -95,13 +197,30 @@ function SharePreview({
   const ar = rtl ? "share-preview-ar" : "";
 
   if (captureTheme === "broadsheet") {
+    const killerLine = rtl ? headline : headline.toLocaleUpperCase("fr-FR");
+    const [rawLeft, rawRight] = splitSummaryForColumns(article.summary, rtl);
+    const leadL = clipTeaser(rawLeft, 260);
+    const leadR = clipTeaser(rawRight, 260);
+    const wireCaption = rtl
+      ? clipTeaser(headline, 40)
+      : headline
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 5)
+          .join(" ")
+          .toLocaleUpperCase("fr-FR")
+          .slice(0, 48);
+    const extraKicker = rtl ? "عاجل" : "EXTRA";
+    const topicCaseTitle = rtl ? article.topic : article.topic.toLocaleUpperCase("fr-FR");
+    const sourceCaseTitle = rtl ? article.sourceLabel : article.sourceLabel.toLocaleUpperCase("fr-FR");
+
     return (
       <div
-        className={`share-surface-broadsheet relative overflow-hidden rounded-sm border-[3px] border-double border-[#0c0806] bg-[#fdf6e8] p-4 text-[#0c0806] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)] sm:p-6 ${ar}`}
+        className={`share-surface-broadsheet share-vintage-front relative overflow-hidden rounded-sm border-[3px] border-double border-[#0c0806] p-3 text-[#0c0806] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)] sm:p-5 ${ar}`}
         dir={rtl ? "rtl" : "ltr"}
         lang={rtl ? "ar" : "fr"}
       >
-        <div className="pointer-events-none absolute inset-0 opacity-[0.07] mix-blend-multiply">
+        <div className="pointer-events-none absolute inset-0 opacity-[0.08] mix-blend-multiply">
           <div
             className="h-full w-full"
             style={{
@@ -111,44 +230,79 @@ function SharePreview({
           />
         </div>
         <div className="relative">
-          <p
-            className="share-site-latin text-center text-[1.85rem] leading-[0.95] tracking-tight text-[#8b1538] sm:text-[2.35rem]"
-            style={{ fontFamily: "var(--font-heritage-display), UnifrakturMaguntia, serif" }}
-          >
-            {siteLabel}
-          </p>
-          <p className="mt-2 text-center text-[9px] font-bold uppercase tracking-[0.42em] text-[#0c0806] sm:text-[10px]">
-            {article.sourceLabel}
-          </p>
-          <div className="my-3 h-px bg-[#0c0806]" />
-          <div className="my-2 h-0.5 bg-[#0c0806]" />
-          <h2
-            className={`text-balance text-center text-[1.05rem] font-bold leading-snug sm:text-[1.2rem] ${!rtl ? "share-heritage-body" : ""}`}
-            style={
-              !rtl
-                ? { fontFamily: "var(--font-heritage-serif), Georgia, 'Times New Roman', serif" }
-                : undefined
-            }
-          >
-            {headline}
-          </h2>
-          <p className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-[#3d2f1f]">{dateStr}</p>
+          <header className="flex flex-col items-center pb-2 text-center">
+            <BrandLogo theme="broadsheet" className="mb-1.5 h-11 w-11 sm:h-12 sm:w-12" />
+            <p
+              className="share-site-latin text-[1.85rem] leading-[0.9] tracking-tight sm:text-[2.25rem]"
+              style={{
+                fontFamily: "var(--font-heritage-display), UnifrakturMaguntia, serif",
+                color: "#b91c1c",
+              }}
+            >
+              {siteLabel}
+            </p>
+            <div className="mt-2 h-px w-[min(100%,18rem)] bg-black" />
+            <div className="mt-1 h-0.5 w-[min(100%,14rem)] bg-black" />
+            <p className="mt-3 max-w-[99%] text-[10px] font-black uppercase leading-[1.35] tracking-[0.06em] text-black sm:text-[11px]">
+              {killerLine}
+            </p>
+            <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.32em] text-[#0c0806]">{article.sourceLabel}</p>
+            <p className="mt-1 text-[8px] font-semibold uppercase tracking-widest text-[#3d2f1f]">{dateStr}</p>
+          </header>
+
+          <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-start sm:gap-3">
+            <div
+              className={`order-2 text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:order-1 sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
+              style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
+            >
+              {leadL || (rtl ? "…" : "—")}
+            </div>
+            <div className="order-1 flex justify-center sm:order-2">
+              <ShareHeroImage url={article.imageUrl} rtl={rtl} caption={wireCaption} />
+            </div>
+            <div
+              className={`order-3 text-justify text-[10px] leading-[1.55] text-[#1a120c] sm:px-0.5 ${!rtl ? "share-heritage-body" : ""}`}
+              style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
+            >
+              {leadR || (rtl ? "…" : "—")}
+            </div>
+          </section>
+
+          <div className="share-vintage-rule-thick my-4 border-y-2 border-black bg-[#f4ead4] px-2 py-2.5 text-center sm:px-4">
+            <p className="text-balance text-[11px] font-black uppercase leading-tight tracking-[0.04em] text-[#0c0806] sm:text-[12px]">
+              {killerLine}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <VintageNewsCase
+              rtl={rtl}
+              kicker={dateStr}
+              title={topicCaseTitle}
+              body={firstSentence(article.summary, 200)}
+            />
+            <VintageNewsCase
+              rtl={rtl}
+              kicker={extraKicker}
+              title={sourceCaseTitle}
+              body={restAfterFirstSentence(article.summary, 220)}
+            />
+          </div>
+
           {article.summary ? (
             <div
-              className={`mt-4 gap-x-5 text-[11px] leading-[1.55] sm:columns-3 sm:text-[10.5px] ${!rtl ? "share-heritage-body" : ""}`}
-              style={
-                !rtl
-                  ? { fontFamily: "var(--font-heritage-serif), Georgia, 'Times New Roman', serif" }
-                  : undefined
-              }
+              className={`mt-4 border-t-2 border-black pt-3 text-[10px] leading-[1.58] sm:columns-3 sm:text-[9.5px] ${!rtl ? "share-heritage-body" : ""}`}
+              style={!rtl ? { fontFamily: "var(--font-heritage-serif), Georgia, serif" } : undefined}
             >
               <p className="text-justify">{article.summary}</p>
             </div>
           ) : null}
-          <div className="mt-5 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-[#3d2f1f] sm:text-[10px]">
+
+          <div className="mt-4 border-2 border-[#0c0806] bg-[#fffdf7] px-2 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-[#3d2f1f] sm:text-[10px]">
             {article.topic}
+            <span className="mx-2 text-[#8b7355]">·</span>
+            <span className="share-site-latin normal-case tracking-normal text-[#5c4a3a]">{siteLabel}</span>
           </div>
-          <p className="share-site-latin mt-3 text-center text-[8px] uppercase tracking-[0.25em] text-[#5c4a3a]">{siteLabel}</p>
         </div>
       </div>
     );

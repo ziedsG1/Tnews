@@ -17,6 +17,8 @@ export type NewsArticle = {
   locale: "ar" | "fr";
   independentMedia: boolean;
   sourceKind: string | null;
+  /** Hero image when the feed exposes media / enclosure (used in vintage share & PDF). */
+  imageUrl: string | null;
 };
 
 const UA =
@@ -31,10 +33,42 @@ function shorten(text: string, max = 220): string {
   return text.slice(0, max - 1).trim() + "…";
 }
 
+type ParsedItem = Parser.Item & {
+  mediaContent?: { $?: { url?: string; medium?: string; type?: string } } | Array<{ $?: { url?: string; medium?: string; type?: string } }>;
+  mediaThumbnail?: { $?: { url?: string } };
+  itunes?: { image?: string };
+};
+
+function pickImageUrl(item: ParsedItem): string | null {
+  const enc = item.enclosure;
+  if (enc?.url && (!enc.type || enc.type.toLowerCase().startsWith("image"))) {
+    return enc.url;
+  }
+  const thumb = item.mediaThumbnail;
+  if (thumb?.$?.url) return thumb.$.url;
+  const mc = item.mediaContent;
+  const list = Array.isArray(mc) ? mc : mc ? [mc] : [];
+  for (const c of list) {
+    const u = c?.$?.url;
+    if (!u) continue;
+    const medium = c.$?.medium?.toLowerCase();
+    const type = c.$?.type?.toLowerCase();
+    if (medium === "image" || (type && type.startsWith("image/")) || (!medium && !type)) return u;
+  }
+  if (item.itunes?.image) return item.itunes.image;
+  return null;
+}
+
 async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
   const parser = new Parser({
     timeout: 12000,
     headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml, */*" },
+    customFields: {
+      item: [
+        ["media:content", "mediaContent", { keepArray: true }],
+        ["media:thumbnail", "mediaThumbnail"],
+      ],
+    },
   });
 
   const feed = await parser.parseURL(source.url);
@@ -44,6 +78,7 @@ async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
   const sourceKind = source.kind ?? null;
 
   return items.slice(0, cap).map((item, idx) => {
+    const pi = item as ParsedItem;
     const title = (item.title ?? (source.locale === "ar" ? "بدون عنوان" : "Sans titre")).trim();
     const link = item.link ?? "#";
     const rawDesc = item.contentSnippet ?? item.content ?? item.summary ?? "";
@@ -64,6 +99,7 @@ async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
       locale: source.locale,
       independentMedia,
       sourceKind,
+      imageUrl: pickImageUrl(pi),
     };
   });
 }
