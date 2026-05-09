@@ -37,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" className={`${heritageDisplay.variable} ${heritageSerif.variable} ${arabicUi.variable}`}>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className={`min-h-screen antialiased ${arabicUi.className}`}>{children}</body>
     </html>
   );
 }

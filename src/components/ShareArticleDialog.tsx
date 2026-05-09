@@ -37,6 +37,8 @@ function canvasBackgroundForTheme(theme: ThemeMode): string {
 const HTML2CANVAS_BLANK_PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
+const PDF_JPEG_QUALITY = 0.88;
+
 /**
  * RSS hero images are cross-origin; html2canvas may still produce a tainted canvas, so
  * `toDataURL` / `toBlob` throw. We swap remote bitmaps only inside html2canvas's cloned DOM.
@@ -82,7 +84,111 @@ function canvasCannotExportPng(canvas: HTMLCanvasElement): boolean {
   }
 }
 
-/** Used for PDF + system share image; retries when the canvas is tainted or capture throws. */
+function canvasCannotExportJpeg(canvas: HTMLCanvasElement, q: number): boolean {
+  try {
+    canvas.toDataURL("image/jpeg", q);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** html2canvas clone: system Arabic stacks rasterize reliably; variable font names differ by build. */
+function injectPdfFriendlyArabicTypography(clonedDoc: Document): void {
+  const st = clonedDoc.createElement("style");
+  st.setAttribute("data-tnews-pdf-capture", "1");
+  st.textContent = `
+    [lang="ar"], [dir="rtl"], .share-preview-ar {
+      font-family: Tahoma, "Segoe UI", "Noto Sans Arabic", "Arabic Typesetting", "Arial Unicode MS", sans-serif !important;
+      letter-spacing: 0 !important;
+      font-feature-settings: "liga" 1, "kern" 1;
+    }
+    .share-heritage-body {
+      font-family: Georgia, "Times New Roman", "Noto Sans Arabic", serif !important;
+    }
+  `;
+  (clonedDoc.head ?? clonedDoc.documentElement).appendChild(st);
+}
+
+async function waitFontsForShareCapture(root: HTMLElement): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts?.ready) return;
+  await document.fonts.ready;
+  const pick = (root.querySelector('[lang="ar"], .share-preview-ar, [dir="rtl"]') ?? root) as HTMLElement;
+  const faces = new Set<string>(["Tahoma", "Segoe UI", "Noto Sans Arabic"]);
+  try {
+    const ff = getComputedStyle(pick).fontFamily || "";
+    const first = ff.split(",")[0]?.trim().replace(/^["']|["']$/g, "");
+    if (first) faces.add(first);
+  } catch {
+    /* ignore */
+  }
+  for (const fam of faces) {
+    try {
+      const q = JSON.stringify(fam);
+      await document.fonts.load(`400 15px ${q}`);
+      await document.fonts.load(`700 14px ${q}`);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * PDF-only capture: strip remote images in clone (avoids tainted canvas), inject Arabic-friendly fonts,
+ * retry at lower scale if the canvas is too large or capture throws.
+ */
+async function captureSharePreviewForPdf(root: HTMLElement, backgroundColor: string): Promise<HTMLCanvasElement> {
+  await waitFontsForShareCapture(root);
+  const { default: html2canvas } = await import("html2canvas");
+  const scales = [2.2, 1.75, 1.35];
+  let lastErr: unknown;
+  for (const scale of scales) {
+    try {
+      const canvas = await html2canvas(root, {
+        scale,
+        useCORS: true,
+        logging: false,
+        backgroundColor,
+        onclone: (clonedDoc: Document) => {
+          stripRemoteRasterImagesInClone(root, clonedDoc);
+          injectPdfFriendlyArabicTypography(clonedDoc);
+        },
+      });
+      if (canvas.width < 2 || canvas.height < 2) throw new Error("EmptyShareCapture");
+      if (canvasCannotExportJpeg(canvas, PDF_JPEG_QUALITY)) throw new Error("TaintedCanvas");
+      return canvas;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("PdfCaptureFailed");
+}
+
+function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTMLCanvasElement {
+  const w = canvas.width;
+  const h = canvas.height;
+  const m = Math.max(w, h);
+  if (m <= maxSide) return canvas;
+  const s = maxSide / m;
+  const out = document.createElement("canvas");
+  out.width = Math.max(2, Math.floor(w * s));
+  out.height = Math.max(2, Math.floor(h * s));
+  const ctx = out.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.drawImage(canvas, 0, 0, w, h, 0, 0, out.width, out.height);
+  if (canvasCannotExportJpeg(out, PDF_JPEG_QUALITY)) return canvas;
+  return out;
+}
+
+function canvasToPdfRasterDataUrl(canvas: HTMLCanvasElement): { data: string; format: "JPEG" | "PNG" } {
+  try {
+    return { data: canvas.toDataURL("image/jpeg", PDF_JPEG_QUALITY), format: "JPEG" };
+  } catch {
+    return { data: canvas.toDataURL("image/png"), format: "PNG" };
+  }
+}
+
+/** Used for system share image; retries when the canvas is tainted or capture throws. */
 async function captureSharePreviewToCanvas(
   root: HTMLElement,
   backgroundColor: string,
@@ -119,8 +225,6 @@ async function captureSharePreviewToCanvas(
   return canvas;
 }
 
-const PDF_JPEG_QUALITY = 0.9;
-
 type PdfAddImageDoc = {
   addPage(): void;
   addImage(
@@ -148,7 +252,8 @@ function addCanvasToPdfPaginated(pdf: PdfAddImageDoc, canvas: HTMLCanvasElement,
   const fullHmm = (ch / cw) * maxW;
   if (fullHmm <= maxH + 0.5) {
     const x = (pageW - maxW) / 2;
-    pdf.addImage(canvas.toDataURL("image/jpeg", PDF_JPEG_QUALITY), "JPEG", x, margin, maxW, fullHmm);
+    const { data, format } = canvasToPdfRasterDataUrl(canvas);
+    pdf.addImage(data, format, x, margin, maxW, fullHmm);
     return;
   }
 
@@ -166,7 +271,8 @@ function addCanvasToPdfPaginated(pdf: PdfAddImageDoc, canvas: HTMLCanvasElement,
     ctx.drawImage(canvas, 0, sy, cw, sh, 0, 0, cw, sh);
     const hMm = (sh / cw) * maxW;
     const x = (pageW - maxW) / 2;
-    pdf.addImage(piece.toDataURL("image/jpeg", PDF_JPEG_QUALITY), "JPEG", x, margin, maxW, hMm);
+    const { data, format } = canvasToPdfRasterDataUrl(piece);
+    pdf.addImage(data, format, x, margin, maxW, hMm);
   }
 }
 
@@ -816,7 +922,8 @@ export function ShareArticleDialog({
       const maxW = pageW - margin * 2;
       const maxH = pageH - margin * 2;
 
-      const canvas = await captureSharePreviewToCanvas(el, bg, { scale: 2.35 });
+      const raw = await captureSharePreviewForPdf(el, bg);
+      const canvas = downscaleCanvasIfNeeded(raw);
       addCanvasToPdfPaginated(pdf as PdfAddImageDoc, canvas, { margin, maxW, maxH, pageW });
 
       const baseName =
