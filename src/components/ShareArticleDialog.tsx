@@ -712,6 +712,17 @@ function ShareStoryCapture({
               referrerPolicy="no-referrer"
               className="h-full w-full object-cover object-center"
             />
+            <div
+              className={`pointer-events-none absolute start-2 top-2 max-w-[calc(100%-1rem)] rounded-md bg-black/55 px-2 py-1 shadow-sm backdrop-blur-[2px] ${
+                rtl ? "text-end" : "text-start"
+              }`}
+              dir={rtl ? "rtl" : "ltr"}
+            >
+              <p className="text-[8px] font-semibold uppercase tracking-wide text-white/75">
+                {rtl ? "المصدر" : "Source"}
+              </p>
+              <p className="line-clamp-2 text-[10px] font-bold leading-tight text-white">{article.sourceLabel}</p>
+            </div>
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
           </>
         ) : (

@@ -34,10 +34,62 @@ function shorten(text: string, max = 220): string {
 }
 
 type ParsedItem = Parser.Item & {
+  contentEncoded?: string;
+  description?: string;
   mediaContent?: { $?: { url?: string; medium?: string; type?: string } } | Array<{ $?: { url?: string; medium?: string; type?: string } }>;
   mediaThumbnail?: { $?: { url?: string } };
   itunes?: { image?: string };
 };
+
+function decodeHtmlAttr(s: string): string {
+  return s
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      const c = Number(n);
+      return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : "";
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => {
+      const c = Number.parseInt(h, 16);
+      return c > 0 && c < 0x110000 ? String.fromCodePoint(c) : "";
+    });
+}
+
+function resolveArticleImageUrl(raw: string, articleLink: string | undefined): string | null {
+  const cleaned = decodeHtmlAttr(raw.trim());
+  if (!cleaned || cleaned.startsWith("data:")) return null;
+  try {
+    const base = articleLink && /^https?:\/\//i.test(articleLink) ? articleLink : undefined;
+    const u = base ? new URL(cleaned, base) : new URL(cleaned);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    const href = u.href;
+    if (/spacer|\/1x1|pixel\.gif|tracking|beacon|\/clear\.gif/i.test(href)) return null;
+    return href;
+  } catch {
+    return null;
+  }
+}
+
+/** First <img src> in RSS HTML bodies (many feeds omit enclosure but embed the photo in content). */
+function pickImageFromEmbeddedHtml(item: ParsedItem): string | null {
+  const pi = item as ParsedItem;
+  const chunks = [item.content, pi.contentEncoded, item.summary, item.description].filter(
+    (s): s is string => typeof s === "string" && s.length > 12,
+  );
+  const html = chunks.join("\n");
+  if (!html) return null;
+  const re = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const raw = m[1] ?? m[2] ?? m[3];
+    if (!raw) continue;
+    const abs = resolveArticleImageUrl(raw, item.link);
+    if (abs) return abs;
+  }
+  return null;
+}
 
 function pickImageUrl(item: ParsedItem): string | null {
   const enc = item.enclosure;
@@ -67,6 +119,7 @@ async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
       item: [
         ["media:content", "mediaContent", { keepArray: true }],
         ["media:thumbnail", "mediaThumbnail"],
+        ["content:encoded", "contentEncoded"],
       ],
     },
   });
@@ -99,7 +152,7 @@ async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
       locale: source.locale,
       independentMedia,
       sourceKind,
-      imageUrl: pickImageUrl(pi),
+      imageUrl: pickImageUrl(pi) ?? pickImageFromEmbeddedHtml(pi),
     };
   });
 }
