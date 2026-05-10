@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal, flushSync } from "react-dom";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import type { ThemeMode } from "@/lib/uiTheme";
 import { proxiedArticleImageUrl } from "@/lib/shareImageUrl";
@@ -160,7 +161,7 @@ async function waitForImagesInRoot(root: HTMLElement): Promise<void> {
 async function captureWithHtmlToImage(
   root: HTMLElement,
   captureTheme: ThemeMode,
-  opts?: { pixelRatio?: number },
+  opts?: { pixelRatio?: number; cacheBust?: boolean },
 ): Promise<Blob | null> {
   const rect = root.getBoundingClientRect();
   const wPx = Math.max(280, Math.ceil(rect.width));
@@ -181,7 +182,7 @@ async function captureWithHtmlToImage(
     const dataUrl = await toJpeg(inner, {
       quality: 0.92,
       pixelRatio,
-      cacheBust: true,
+      cacheBust: opts?.cacheBust !== false,
       backgroundColor: canvasBackgroundForTheme(captureTheme),
       skipFonts: /iPhone|iPad|iPod/i.test(navigator.userAgent),
     });
@@ -277,6 +278,31 @@ function downscaleCanvasIfNeeded(canvas: HTMLCanvasElement, maxSide = 7800): HTM
   return out;
 }
 
+/** Heuristic: hero area is nearly black (common when <img> never painted into the canvas). */
+function canvasHeroBandLooksBlank(canvas: HTMLCanvasElement): boolean {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return false;
+  const w = canvas.width;
+  const h = canvas.height;
+  if (w < 8 || h < 8) return true;
+  const bh = Math.max(24, Math.floor(h * 0.42));
+  const bw = Math.min(w, Math.max(64, Math.floor(w * 0.38)));
+  const x0 = Math.floor((w - bw) / 2);
+  try {
+    const d = ctx.getImageData(x0, 0, bw, bh);
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i < d.data.length; i += 16) {
+      sum += d.data[i]! + d.data[i + 1]! + d.data[i + 2]!;
+      n++;
+    }
+    const avg = n > 0 ? sum / n / 3 : 255;
+    return avg < 12;
+  } catch {
+    return false;
+  }
+}
+
 async function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
   const fromBlob: Blob | null = await new Promise((resolve) => {
     canvas.toBlob((b) => resolve(b), "image/jpeg", quality);
@@ -303,7 +329,6 @@ async function captureSharePreviewAsJpegBlob(
 ): Promise<Blob | null> {
   if (!root) return null;
   const storyFrame = root.dataset.instagramStory === "1";
-  const prevStoryCss = root.style.cssText;
 
   if (typeof document !== "undefined" && document.fonts?.ready) {
     try {
@@ -317,42 +342,56 @@ async function captureSharePreviewAsJpegBlob(
   const bg = canvasBackgroundForTheme(captureTheme);
   const storyPixelRatio = Math.min(3, typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2);
 
-  try {
-    // Far off-screen frames are often unpainted or lazy-skipped (black hero). Pin in the viewport only while capturing.
-    if (storyFrame) {
-      root.style.setProperty("position", "fixed", "important");
-      root.style.setProperty("left", "0", "important");
-      root.style.setProperty("top", "0", "important");
-      root.style.setProperty("width", "360px", "important");
-      root.style.setProperty("height", "640px", "important");
-      root.style.setProperty("max-width", "360px", "important");
-      root.style.setProperty("max-height", "640px", "important");
-      root.style.setProperty("z-index", "2147483640", "important");
-      root.style.setProperty("pointer-events", "none", "important");
-      root.style.setProperty("opacity", "0.02", "important");
-      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-      await new Promise<void>((r) => window.setTimeout(() => r(), 120));
-    }
+  await waitForImagesInRoot(root);
 
-    await waitForImagesInRoot(root);
-
-    if (prefersHtmlToImageCapture()) {
-      root.scrollTop = 0;
-      const hi = await captureWithHtmlToImage(root, captureTheme, storyFrame ? { pixelRatio: storyPixelRatio } : undefined);
-      if (hi) return hi;
-    }
-
+  if (storyFrame) {
+    const hasHeroImg = Boolean(root.querySelector('img[src*="image-proxy"]'));
+    let lastStoryCanvas: HTMLCanvasElement | null = null;
     try {
       const raw = await capturePreviewRootToCanvas(root, bg, compact);
       const canvas = downscaleCanvasIfNeeded(raw, compact ? 3600 : 7800);
-      return await canvasToJpegBlob(canvas, 0.88);
+      lastStoryCanvas = canvas;
+      const looksBlank = hasHeroImg && canvasHeroBandLooksBlank(canvas);
+      if (!looksBlank) {
+        const b = await canvasToJpegBlob(canvas, 0.88);
+        if (b) return b;
+      }
     } catch {
-      return null;
+      /* fall through to html-to-image */
     }
-  } finally {
-    if (storyFrame) {
-      root.style.cssText = prevStoryCss;
+    try {
+      root.scrollTop = 0;
+      const hi = await captureWithHtmlToImage(root, captureTheme, {
+        pixelRatio: storyPixelRatio,
+        cacheBust: false,
+      });
+      if (hi) return hi;
+    } catch {
+      /* ignore */
     }
+    if (lastStoryCanvas) {
+      try {
+        const fallback = await canvasToJpegBlob(lastStoryCanvas, 0.88);
+        return fallback && fallback.size >= 48 ? fallback : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  if (prefersHtmlToImageCapture()) {
+    root.scrollTop = 0;
+    const hi = await captureWithHtmlToImage(root, captureTheme, undefined);
+    if (hi) return hi;
+  }
+
+  try {
+    const raw = await capturePreviewRootToCanvas(root, bg, compact);
+    const canvas = downscaleCanvasIfNeeded(raw, compact ? 3600 : 7800);
+    return await canvasToJpegBlob(canvas, 0.88);
+  } catch {
+    return null;
   }
 }
 
@@ -960,6 +999,7 @@ export function ShareArticleDialog({
   const labels = LABELS[uiLang];
   const article = articles[0] ?? null;
   const storyCaptureRef = useRef<HTMLDivElement>(null);
+  const [storyRevealForCapture, setStoryRevealForCapture] = useState(false);
   const [igBusy, setIgBusy] = useState(false);
   const [igTabNote, setIgTabNote] = useState(false);
   const [igErr, setIgErr] = useState<string | null>(null);
@@ -992,6 +1032,9 @@ export function ShareArticleDialog({
     });
     setIgBusy(true);
     try {
+      flushSync(() => setStoryRevealForCapture(true));
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      await new Promise<void>((r) => window.setTimeout(() => r(), 320));
       const outcome = await shareInstagramStoryFromPreview(
         storyCaptureRef.current,
         article,
@@ -1009,17 +1052,41 @@ export function ShareArticleDialog({
     } catch {
       setIgErr(inAppBrowserLikely() ? labels.igFailInApp : labels.igFail);
     } finally {
+      flushSync(() => setStoryRevealForCapture(false));
       setIgBusy(false);
     }
   }, [article, captureTheme, compactCapture, labels.igFail, labels.igFailInApp]);
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-end justify-center bg-black/55 p-3 sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="share-dialog-title"
-    >
+    <>
+      {article && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className={
+                storyRevealForCapture
+                  ? "fixed inset-0 z-[300] flex items-center justify-center bg-black/80 pointer-events-none"
+                  : "pointer-events-none fixed left-[-12000px] top-0 flex h-[640px] w-[360px] overflow-hidden"
+              }
+              aria-hidden
+            >
+              <div
+                ref={storyCaptureRef}
+                data-instagram-story="1"
+                data-share-capture-root
+                className="h-[640px] w-[360px] shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10"
+              >
+                <ShareStoryCapture article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+      <div
+        className="fixed inset-0 z-[200] flex items-end justify-center bg-black/55 p-3 sm:items-center sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-dialog-title"
+      >
       <button type="button" className="absolute inset-0 cursor-default" aria-label={labels.close} onClick={onClose} />
       <div
         className="theme-panel relative z-[1] max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-4 shadow-2xl sm:p-5"
@@ -1043,15 +1110,6 @@ export function ShareArticleDialog({
 
         {article ? (
           <>
-            <div
-              ref={storyCaptureRef}
-              className="pointer-events-none fixed left-[-12000px] top-0 z-0 h-[640px] w-[360px] overflow-hidden"
-              aria-hidden
-              data-instagram-story="1"
-              data-share-capture-root
-            >
-              <ShareStoryCapture article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
-            </div>
             <div className="max-h-[38vh] min-h-[200px] overflow-y-auto rounded-lg border border-white/10">
               <SharePreview article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
             </div>
@@ -1095,5 +1153,6 @@ export function ShareArticleDialog({
         )}
       </div>
     </div>
+    </>
   );
 }
