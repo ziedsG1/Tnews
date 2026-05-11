@@ -6,6 +6,7 @@ import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ShareArticleDialog } from "@/components/ShareArticleDialog";
+import { ShareWeatherDialog } from "@/components/ShareWeatherDialog";
 import { parseStoredTheme, THEME_ORDER, type ThemeMode } from "@/lib/uiTheme";
 import { weatherCodeEmoji, weatherCodeLabel } from "@/lib/weather";
 
@@ -262,12 +263,17 @@ export function HomeClient() {
   const [weatherData, setWeatherData] = useState<WeatherPayload | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherErr, setWeatherErr] = useState<string | null>(null);
-  const [weatherShareNote, setWeatherShareNote] = useState<string | null>(null);
+  const [weatherShareOpen, setWeatherShareOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<{
     articles: NewsArticle[];
     theme: ThemeMode;
   } | null>(null);
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
+
+  const weatherPageUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}/api/weather?country=${encodeURIComponent(country)}&lang=${encodeURIComponent(uiLang)}`;
+  }, [country, uiLang]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -315,6 +321,10 @@ export function HomeClient() {
   }, [viewMode, loadWeather]);
 
   useEffect(() => {
+    if (viewMode !== "weather") setWeatherShareOpen(false);
+  }, [viewMode]);
+
+  useEffect(() => {
     const id = window.setInterval(() => void load(), 6 * 60 * 1000);
     return () => window.clearInterval(id);
   }, [load]);
@@ -358,7 +368,6 @@ export function HomeClient() {
         weatherWind: "الرياح",
         weatherToday: "اليوم",
         weatherUnavailable: "بيانات الطقس غير متوفرة حاليا.",
-        weatherCopied: "تم نسخ ملخص الطقس.",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
         selectedTitle: "المحدد",
@@ -379,7 +388,6 @@ export function HomeClient() {
         weatherWind: "Vent",
         weatherToday: "Aujourd'hui",
         weatherUnavailable: "Météo indisponible pour le moment.",
-        weatherCopied: "Résumé météo copié.",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
         selectedTitle: "Sélection",
@@ -400,7 +408,6 @@ export function HomeClient() {
         weatherWind: "Wind",
         weatherToday: "Today",
         weatherUnavailable: "Weather is unavailable right now.",
-        weatherCopied: "Weather summary copied.",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
         selectedTitle: "Selection",
@@ -514,34 +521,6 @@ export function HomeClient() {
     },
     [theme],
   );
-
-  const shareWeather = useCallback(async () => {
-    if (!weatherData) return;
-    const weatherText = [
-      `${t.weatherTitle} (${weatherData.city})`,
-      `${t.weatherToday}: ${weatherCodeLabel(weatherData.current.weatherCode, uiLang)}`,
-      weatherData.current.temperature != null ? `${Math.round(weatherData.current.temperature)}°C` : "",
-      weatherData.current.windSpeed != null ? `${t.weatherWind}: ${Math.round(weatherData.current.windSpeed)} km/h` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    const shareUrl = `${window.location.origin}/api/weather?country=${encodeURIComponent(country)}&lang=${encodeURIComponent(uiLang)}`;
-    try {
-      const nav = navigator as Navigator & {
-        share?: (data: ShareData) => Promise<void>;
-      };
-      if (typeof nav.share === "function") {
-        await nav.share({ title: t.weatherTitle, text: weatherText, url: shareUrl });
-        setWeatherShareNote(null);
-        return;
-      }
-      await navigator.clipboard.writeText(`${weatherText}\n${shareUrl}`);
-      setWeatherShareNote(t.weatherCopied);
-      window.setTimeout(() => setWeatherShareNote(null), 2200);
-    } catch {
-      // ignore user-cancel / permission errors
-    }
-  }, [weatherData, t.weatherTitle, t.weatherToday, t.weatherWind, t.weatherCopied, uiLang, country]);
 
   return (
     <main
@@ -835,14 +814,13 @@ export function HomeClient() {
               <h2 className="theme-headline text-2xl font-bold">{t.weatherTitle}</h2>
               <button
                 type="button"
-                onClick={() => void shareWeather()}
+                onClick={() => setWeatherShareOpen(true)}
                 disabled={!weatherData || weatherLoading}
                 className="rounded-lg bg-gradient-to-r from-sky-600 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:brightness-110 disabled:opacity-50"
               >
                 {t.weatherShare}
               </button>
             </div>
-            {weatherShareNote ? <p className="mb-2 text-xs text-emerald-300">{weatherShareNote}</p> : null}
             {weatherErr ? (
               <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">{weatherErr}</p>
             ) : null}
@@ -914,6 +892,17 @@ export function HomeClient() {
           captureTheme={shareTarget.theme}
           uiLang={uiLang}
           onClose={() => setShareTarget(null)}
+        />
+      ) : null}
+      {weatherShareOpen && weatherData ? (
+        <ShareWeatherDialog
+          weather={weatherData}
+          siteLabel={activeCountry.brand}
+          countryName={activeCountry.names[uiLang]}
+          captureTheme={theme}
+          uiLang={uiLang}
+          weatherPageUrl={weatherPageUrl}
+          onClose={() => setWeatherShareOpen(false)}
         />
       ) : null}
     </main>
