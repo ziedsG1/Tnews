@@ -4,6 +4,8 @@ import { appendOpinion, listOpinionsForCountry } from "@/lib/publicOpinionsServe
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+/** File-based opinions need Node `fs` (not Edge) and a writable path (see `publicOpinionsServer`). */
+export const runtime = "nodejs";
 
 function sanitizeText(s: string, max: number): string {
   return s
@@ -47,6 +49,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, opinion: row });
   } catch (e) {
     console.error("opinions POST", e);
-    return NextResponse.json({ error: "Could not save opinion." }, { status: 500 });
+    const detail =
+      process.env.NODE_ENV === "development" ? (e instanceof Error ? e.message : String(e)) : undefined;
+    return NextResponse.json({ error: "Could not save opinion.", detail }, { status: 500 });
   }
 }

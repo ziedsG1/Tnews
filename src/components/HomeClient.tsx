@@ -637,8 +637,11 @@ export function HomeClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ country, body: opinionBody, author: opinionAuthor }),
       });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      const json = (await res.json()) as { error?: string; detail?: string };
+      if (!res.ok) {
+        const parts = [json.error, json.detail].filter(Boolean);
+        throw new Error(parts.length ? parts.join(" — ") : `HTTP ${res.status}`);
+      }
       setOpinionBody("");
       setOpinionAuthor("");
       setOpinionDoneNote(t.opinionPosted);
