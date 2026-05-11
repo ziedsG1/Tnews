@@ -1033,6 +1033,23 @@ export function ShareArticleDialog({
 
   const compactCapture = narrow || inAppBrowserLikely();
 
+  const runFacebookShare = useCallback(async () => {
+    if (!article) return;
+    const title = article.translatedTitle ?? article.title;
+    const nav = navigator as Navigator & {
+      share?: (data: ShareData) => Promise<void>;
+    };
+    if (typeof nav.share === "function") {
+      try {
+        await nav.share({ title, text: title, url: article.link });
+        return;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }
+    window.open(facebookFeedShareUrl(article.link), "_blank", "noopener,noreferrer");
+  }, [article]);
+
   const runInstagramShare = useCallback(async () => {
     if (!article) return;
     setIgErr(null);
@@ -1128,9 +1145,7 @@ export function ShareArticleDialog({
               <button
                 type="button"
                 className={btnFb}
-                onClick={() => {
-                  window.open(facebookFeedShareUrl(article.link), "_blank", "noopener,noreferrer");
-                }}
+                onClick={() => void runFacebookShare()}
               >
                 {labels.facebook}
               </button>

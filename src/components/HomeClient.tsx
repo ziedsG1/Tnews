@@ -7,7 +7,7 @@ import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ShareArticleDialog } from "@/components/ShareArticleDialog";
 import { parseStoredTheme, THEME_ORDER, type ThemeMode } from "@/lib/uiTheme";
-import { weatherCodeLabel } from "@/lib/weather";
+import { weatherCodeEmoji, weatherCodeLabel } from "@/lib/weather";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
 
@@ -852,12 +852,18 @@ export function HomeClient() {
             {weatherLoading ? <p className="theme-muted text-sm">Loading weather…</p> : null}
             {weatherData ? (
               <div className="space-y-4">
-                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-sky-900/60 via-cyan-900/35 to-indigo-900/40 p-4">
+                  <div className="pointer-events-none absolute -right-2 -top-3 text-6xl opacity-30" aria-hidden>
+                    {weatherCodeEmoji(weatherData.current.weatherCode)}
+                  </div>
                   <p className="text-sm text-slate-300">{weatherData.city}</p>
                   <p className="mt-1 text-4xl font-bold text-white">
                     {weatherData.current.temperature == null ? "—" : `${Math.round(weatherData.current.temperature)}°C`}
                   </p>
-                  <p className="mt-2 text-sm text-slate-300">{weatherCodeLabel(weatherData.current.weatherCode, uiLang)}</p>
+                  <p className="mt-2 flex items-center gap-1.5 text-sm text-slate-200">
+                    <span aria-hidden>{weatherCodeEmoji(weatherData.current.weatherCode)}</span>
+                    <span>{weatherCodeLabel(weatherData.current.weatherCode, uiLang)}</span>
+                  </p>
                   <p className="mt-1 text-xs text-slate-400">
                     {t.weatherWind}: {weatherData.current.windSpeed == null ? "—" : `${Math.round(weatherData.current.windSpeed)} km/h`}
                   </p>
@@ -866,7 +872,10 @@ export function HomeClient() {
                   {weatherData.daily.map((d) => (
                     <li key={d.date} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                       <p className="text-xs text-slate-400">{new Date(d.date).toLocaleDateString(uiLang === "ar" ? "ar" : "fr-TN")}</p>
-                      <p className="mt-1 text-sm font-semibold text-white">{weatherCodeLabel(d.weatherCode, uiLang)}</p>
+                      <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-white">
+                        <span aria-hidden>{weatherCodeEmoji(d.weatherCode)}</span>
+                        <span>{weatherCodeLabel(d.weatherCode, uiLang)}</span>
+                      </p>
                       <p className="mt-1 text-xs text-slate-300">
                         {d.max == null ? "—" : `${Math.round(d.max)}°`} / {d.min == null ? "—" : `${Math.round(d.min)}°`}
                       </p>
