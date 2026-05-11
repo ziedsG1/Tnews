@@ -9,6 +9,8 @@ import { ShareArticleDialog } from "@/components/ShareArticleDialog";
 import { ShareWeatherDialog } from "@/components/ShareWeatherDialog";
 import { parseStoredTheme, THEME_ORDER, type ThemeMode } from "@/lib/uiTheme";
 import { weatherCodeEmoji, weatherCodeLabel } from "@/lib/weather";
+import type { StoredOpinion } from "@/lib/publicOpinions";
+import { opinionToArticle } from "@/lib/publicOpinions";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
 
@@ -224,6 +226,11 @@ function ArticleCard({
             State
           </span>
         )}
+        {article.sourceKind === "opinion" && (
+          <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-200">
+            {rtl ? "رأي" : "Opinion"}
+          </span>
+        )}
         <span
           className={`text-[10px] font-semibold uppercase tracking-wide ${rtl ? "text-emerald-300/90" : "text-rose-400/90"}`}
         >
@@ -259,11 +266,19 @@ export function HomeClient() {
   const [country, setCountry] = useState<CountryId>("TN");
   const [uiLang, setUiLang] = useState<UiLang>("ar");
   const [theme, setTheme] = useState<ThemeMode>("dark");
-  const [viewMode, setViewMode] = useState<"news" | "weather">("news");
+  const [viewMode, setViewMode] = useState<"news" | "weather" | "opinions">("news");
   const [weatherData, setWeatherData] = useState<WeatherPayload | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherErr, setWeatherErr] = useState<string | null>(null);
   const [weatherShareOpen, setWeatherShareOpen] = useState(false);
+  const [opinionsRaw, setOpinionsRaw] = useState<StoredOpinion[]>([]);
+  const [opinionsLoading, setOpinionsLoading] = useState(false);
+  const [opinionsErr, setOpinionsErr] = useState<string | null>(null);
+  const [opinionBody, setOpinionBody] = useState("");
+  const [opinionAuthor, setOpinionAuthor] = useState("");
+  const [opinionPosting, setOpinionPosting] = useState(false);
+  const [opinionDoneNote, setOpinionDoneNote] = useState<string | null>(null);
+  const [siteOrigin, setSiteOrigin] = useState("");
   const [shareTarget, setShareTarget] = useState<{
     articles: NewsArticle[];
     theme: ThemeMode;
@@ -293,6 +308,21 @@ export function HomeClient() {
     }
   }, [country, uiLang]);
 
+  const loadOpinions = useCallback(async () => {
+    setOpinionsLoading(true);
+    setOpinionsErr(null);
+    try {
+      const res = await fetch(`/api/opinions?country=${encodeURIComponent(country)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { opinions: StoredOpinion[] };
+      setOpinionsRaw(Array.isArray(json.opinions) ? json.opinions : []);
+    } catch (e) {
+      setOpinionsErr(e instanceof Error ? e.message : "Opinions load failed");
+    } finally {
+      setOpinionsLoading(false);
+    }
+  }, [country]);
+
   const loadWeather = useCallback(async () => {
     setWeatherLoading(true);
     setWeatherErr(null);
@@ -319,6 +349,16 @@ export function HomeClient() {
     if (viewMode !== "weather") return;
     void loadWeather();
   }, [viewMode, loadWeather]);
+
+  useEffect(() => {
+    if (viewMode !== "opinions") return;
+    void loadOpinions();
+  }, [viewMode, loadOpinions]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSiteOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     if (viewMode !== "weather") setWeatherShareOpen(false);
@@ -365,6 +405,18 @@ export function HomeClient() {
         newsButton: "الأخبار",
         weatherTitle: `طقس ${activeCountry.names.ar}`,
         weatherShare: "مشاركة الطقس",
+        opinionsButton: "رأي العام",
+        opinionsTitle: `رأي العام — ${activeCountry.names.ar}`,
+        opinionsSearchHint: "ابحث في الآراء المنشورة.",
+        opinionsComposerHint:
+          "انشر رأيك كتابياً. يظهر للجميع كبطاقة في هذا القسم للدولة المختارة. المحتوى مسؤولية كاتبه وليس تحريراً صحافياً.",
+        opinionsPlaceholder: "اكتب رأيك هنا…",
+        opinionsAuthorPlaceholder: "اسم أو كنية (اختياري)",
+        opinionsSubmit: "نشر الرأي",
+        opinionsPosting: "جاري النشر…",
+        opinionsEmpty: "لا توجد آراء بعد لهذا البلد. كن أول من يكتب.",
+        opinionPosted: "تم نشر الرأي.",
+        opinionsSidebarNote: "هذا منشور من القارئ في قسم «رأي العام» وليس من أسلاك الأخبار.",
         weatherWind: "الرياح",
         weatherToday: "اليوم",
         weatherUnavailable: "بيانات الطقس غير متوفرة حاليا.",
@@ -385,6 +437,18 @@ export function HomeClient() {
         newsButton: "News",
         weatherTitle: `Météo ${activeCountry.names.fr}`,
         weatherShare: "Partager météo",
+        opinionsButton: "Opinion",
+        opinionsTitle: `Opinion publique — ${activeCountry.names.fr}`,
+        opinionsSearchHint: "Rechercher parmi les avis publiés.",
+        opinionsComposerHint:
+          "Publiez votre avis. Il apparaît comme une carte dans cette section pour le pays sélectionné. Le contenu engage son auteur, pas la rédaction.",
+        opinionsPlaceholder: "Votre avis…",
+        opinionsAuthorPlaceholder: "Pseudo ou prénom (optionnel)",
+        opinionsSubmit: "Publier",
+        opinionsPosting: "Publication…",
+        opinionsEmpty: "Aucun avis pour ce pays pour le moment. Soyez le premier.",
+        opinionPosted: "Avis publié.",
+        opinionsSidebarNote: "Texte publié par un lecteur dans « Opinion publique », pas un fil de presse.",
         weatherWind: "Vent",
         weatherToday: "Aujourd'hui",
         weatherUnavailable: "Météo indisponible pour le moment.",
@@ -405,6 +469,18 @@ export function HomeClient() {
         newsButton: "News",
         weatherTitle: `${activeCountry.names.en} weather`,
         weatherShare: "Share weather",
+        opinionsButton: "Opinion",
+        opinionsTitle: `Public opinion — ${activeCountry.names.en}`,
+        opinionsSearchHint: "Search published opinions.",
+        opinionsComposerHint:
+          "Post your opinion. It appears as a card in this section for the selected country. Content is the author’s responsibility, not editorial.",
+        opinionsPlaceholder: "Write your opinion…",
+        opinionsAuthorPlaceholder: "Name or nickname (optional)",
+        opinionsSubmit: "Post",
+        opinionsPosting: "Posting…",
+        opinionsEmpty: "No opinions for this country yet. Be the first.",
+        opinionPosted: "Posted.",
+        opinionsSidebarNote: "Reader post in “Public opinion”, not a news wire.",
         weatherWind: "Wind",
         weatherToday: "Today",
         weatherUnavailable: "Weather is unavailable right now.",
@@ -444,6 +520,23 @@ export function HomeClient() {
     });
   }, [filteredArticles, searchQuery]);
 
+  const opinionArticles = useMemo(
+    () => opinionsRaw.map((o) => opinionToArticle(o, uiLang, siteOrigin)),
+    [opinionsRaw, uiLang, siteOrigin],
+  );
+
+  const searchedOpinions = useMemo(() => {
+    const { phrase, tokenGroups } = searchTerms(searchQuery);
+    if (!phrase) return opinionArticles;
+    return opinionArticles.filter((a) => {
+      const haystack = normalizeForSearch(
+        `${a.translatedTitle ?? a.title} ${a.title} ${a.summary ?? ""} ${a.sourceLabel} ${a.topic}`,
+      );
+      if (haystack.includes(phrase)) return true;
+      return tokenGroups.every((group) => group.some((token) => haystack.includes(token)));
+    });
+  }, [opinionArticles, searchQuery]);
+
   const { arabic, french } = useMemo(() => {
     const ar = searchedArticles.filter((a) => a.locale === "ar").sort(byArticleDateDesc);
     const fr = searchedArticles.filter((a) => a.locale === "fr").sort(byArticleDateDesc);
@@ -453,17 +546,28 @@ export function HomeClient() {
     };
   }, [searchedArticles]);
 
-  /** Topic-filtered article for sidebar; cleared if filters hide the selected card. */
+  /** Selected card for sidebar (news filters vs opinions search). */
   const selectedArticle = useMemo(() => {
     if (!selectedId) return null;
+    if (viewMode === "opinions") {
+      return searchedOpinions.find((a) => a.id === selectedId) ?? null;
+    }
     return filteredArticles.find((a) => a.id === selectedId) ?? null;
-  }, [selectedId, filteredArticles]);
+  }, [selectedId, viewMode, filteredArticles, searchedOpinions]);
 
   useEffect(() => {
+    if (viewMode !== "news") return;
     if (selectedId && !filteredArticles.some((a) => a.id === selectedId)) {
       setSelectedId(null);
     }
-  }, [filteredArticles, selectedId]);
+  }, [viewMode, filteredArticles, selectedId]);
+
+  useEffect(() => {
+    if (viewMode !== "opinions") return;
+    if (selectedId && !searchedOpinions.some((a) => a.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [viewMode, searchedOpinions, selectedId]);
 
   const selectArticle = useCallback((article: NewsArticle) => {
     setSelectedId(article.id);
@@ -521,6 +625,31 @@ export function HomeClient() {
     },
     [theme],
   );
+
+  const submitOpinion = useCallback(async () => {
+    if (opinionPosting) return;
+    setOpinionDoneNote(null);
+    setOpinionsErr(null);
+    setOpinionPosting(true);
+    try {
+      const res = await fetch("/api/opinions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country, body: opinionBody, author: opinionAuthor }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setOpinionBody("");
+      setOpinionAuthor("");
+      setOpinionDoneNote(t.opinionPosted);
+      window.setTimeout(() => setOpinionDoneNote(null), 3200);
+      await loadOpinions();
+    } catch (e) {
+      setOpinionsErr(e instanceof Error ? e.message : "Post failed");
+    } finally {
+      setOpinionPosting(false);
+    }
+  }, [opinionPosting, country, opinionBody, opinionAuthor, loadOpinions, t.opinionPosted]);
 
   return (
     <main
@@ -580,7 +709,7 @@ export function HomeClient() {
             <option value="fr">FR</option>
             <option value="en">EN</option>
           </select>
-          {data?.fetchedAt && (
+          {viewMode === "news" && data?.fetchedAt && (
             <span className="theme-muted hidden max-w-[9rem] truncate text-[9px] text-slate-500 lg:inline">
               {new Intl.DateTimeFormat("fr-TN", {
                 dateStyle: "short",
@@ -595,22 +724,30 @@ export function HomeClient() {
                 void loadWeather();
                 return;
               }
+              if (viewMode === "opinions") {
+                void loadOpinions();
+                return;
+              }
               void load();
             }}
-            disabled={viewMode === "weather" ? weatherLoading : loading}
+            disabled={
+              viewMode === "weather" ? weatherLoading : viewMode === "opinions" ? opinionsLoading : loading
+            }
             title="Rafraîchir / تحديث"
             aria-label="Rafraîchir les actualités"
             className="rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-md shadow-emerald-900/25 transition hover:brightness-110 disabled:opacity-50 sm:px-3.5 sm:text-xs"
           >
-            {(viewMode === "weather" ? weatherLoading : loading) ? "…" : "↻"}
+            {(viewMode === "weather" ? weatherLoading : viewMode === "opinions" ? opinionsLoading : loading)
+              ? "…"
+              : "↻"}
           </button>
         </div>
         <div className="order-3 w-full sm:order-2 sm:ml-3 sm:w-auto">
-          <div className="mx-auto flex w-full max-w-[16rem] items-center justify-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1 sm:mx-0 sm:w-auto sm:justify-start">
+          <div className="mx-auto flex w-full max-w-[22rem] items-center justify-center gap-0.5 rounded-full border border-white/10 bg-white/[0.03] p-1 sm:mx-0 sm:w-auto sm:justify-start">
             <button
               type="button"
               onClick={() => setViewMode("news")}
-              className={`min-h-9 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2.5 sm:py-1 sm:text-[10px] ${
+              className={`min-h-9 flex-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2 sm:py-1 sm:text-[10px] ${
                 viewMode === "news" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10"
               }`}
             >
@@ -619,10 +756,22 @@ export function HomeClient() {
             <button
               type="button"
               onClick={() => {
+                setViewMode("opinions");
+                void loadOpinions();
+              }}
+              className={`min-h-9 flex-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2 sm:py-1 sm:text-[10px] ${
+                viewMode === "opinions" ? "bg-violet-600 text-white" : "text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {t.opinionsButton}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setViewMode("weather");
                 void loadWeather();
               }}
-              className={`min-h-9 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2.5 sm:py-1 sm:text-[10px] ${
+              className={`min-h-9 flex-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2 sm:py-1 sm:text-[10px] ${
                 viewMode === "weather" ? "bg-sky-600 text-white" : "text-slate-300 hover:bg-white/10"
               }`}
             >
@@ -632,18 +781,20 @@ export function HomeClient() {
         </div>
       </header>
 
-      {viewMode === "news" ? (
-      <div className="theme-panel mx-auto w-full max-w-2xl rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
-        <input
-          id="news-search"
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t.searchPlaceholder}
-          className="theme-input w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
-        />
-        <p className="theme-muted mt-2 text-center text-[10px] leading-snug sm:text-[11px]">{t.shareHint}</p>
-      </div>
+      {viewMode === "news" || viewMode === "opinions" ? (
+        <div className="theme-panel mx-auto w-full max-w-2xl rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+          <input
+            id="news-search"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t.searchPlaceholder}
+            className="theme-input w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
+          />
+          <p className="theme-muted mt-2 text-center text-[10px] leading-snug sm:text-[11px]">
+            {viewMode === "news" ? t.shareHint : t.opinionsSearchHint}
+          </p>
+        </div>
       ) : null}
 
       {viewMode === "news" && err && (
@@ -652,10 +803,18 @@ export function HomeClient() {
         </div>
       )}
 
-      {viewMode === "news" ? (
-      <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-12">
-          <div dir="rtl" lang="ar">
+      {viewMode === "opinions" && opinionsErr && (
+        <div className="rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+          {opinionsErr}
+        </div>
+      )}
+
+      {viewMode === "news" || viewMode === "opinions" ? (
+        <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
+          <div className="flex flex-col gap-12">
+            {viewMode === "news" ? (
+              <>
+                <div dir="rtl" lang="ar">
             <h2 className="theme-headline mb-4 text-2xl font-bold text-white">{t.newsTitle}</h2>
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {arabic.map((a) => (
@@ -692,7 +851,66 @@ export function HomeClient() {
             {french.length === 0 && !loading && (
               <p className="theme-muted text-slate-500">{t.noFr}</p>
             )}
-          </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="theme-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <h2 className="theme-headline text-2xl font-bold text-white">{t.opinionsTitle}</h2>
+                  <p className="theme-muted mt-2 text-sm leading-relaxed">{t.opinionsComposerHint}</p>
+                  {opinionDoneNote ? (
+                    <p className="mt-3 text-sm font-medium text-emerald-300">{opinionDoneNote}</p>
+                  ) : null}
+                  <textarea
+                    value={opinionBody}
+                    onChange={(e) => setOpinionBody(e.target.value)}
+                    rows={5}
+                    placeholder={t.opinionsPlaceholder}
+                    maxLength={2000}
+                    className="theme-input mt-4 w-full rounded-lg border border-white/25 bg-black/25 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-400/50"
+                    aria-label={t.opinionsPlaceholder}
+                  />
+                  <input
+                    type="text"
+                    value={opinionAuthor}
+                    onChange={(e) => setOpinionAuthor(e.target.value)}
+                    maxLength={48}
+                    placeholder={t.opinionsAuthorPlaceholder}
+                    className="theme-input mt-3 w-full rounded-lg border border-white/25 bg-black/25 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-400/50"
+                    aria-label={t.opinionsAuthorPlaceholder}
+                  />
+                  <button
+                    type="button"
+                    disabled={opinionPosting || opinionBody.trim().length < 8}
+                    onClick={() => void submitOpinion()}
+                    className="mt-4 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:brightness-110 disabled:opacity-50"
+                  >
+                    {opinionPosting ? t.opinionsPosting : t.opinionsSubmit}
+                  </button>
+                </div>
+                <div
+                  dir={uiLang === "ar" ? "rtl" : "ltr"}
+                  lang={uiLang === "ar" ? "ar" : uiLang === "fr" ? "fr" : "en"}
+                >
+                  <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {searchedOpinions.map((a) => (
+                      <li key={a.id}>
+                        <ArticleCard
+                          article={a}
+                          onSelect={() => selectArticle(a)}
+                          active={selectedId === a.id}
+                          onShareDoubleClick={() => openShareFromDoubleClick(a)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                  {searchedOpinions.length === 0 && !opinionsLoading && (
+                    <p className="theme-muted mt-2 text-slate-500">{t.opinionsEmpty}</p>
+                  )}
+                  {opinionsLoading ? <p className="theme-muted mt-2 text-sm">…</p> : null}
+                </div>
+              </>
+            )}
         </div>
 
         <div className="flex flex-col gap-3 lg:sticky lg:top-14 lg:self-start">
@@ -756,55 +974,63 @@ export function HomeClient() {
                 {selectedArticle.summary && (
                   <p className="theme-muted text-sm leading-relaxed text-slate-400">{selectedArticle.summary}</p>
                 )}
-                <a
-                  href={selectedArticle.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex w-fit items-center gap-2 rounded-lg bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-300 ring-1 ring-sky-400/40 transition hover:bg-sky-500/25"
-                >
-                  {t.sourceLink}
-                </a>
+                {selectedArticle.sourceId === "public-opinion" ? (
+                  <p className="theme-muted text-sm leading-relaxed text-slate-400">{t.opinionsSidebarNote}</p>
+                ) : (
+                  <a
+                    href={selectedArticle.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex w-fit items-center gap-2 rounded-lg bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-300 ring-1 ring-sky-400/40 transition hover:bg-sky-500/25"
+                  >
+                    {t.sourceLink}
+                  </a>
+                )}
               </div>
             )}
 
-            <div className="mt-8 border-t border-white/10 pt-4" dir="ltr">
-              <h3 className="theme-muted mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Sources (aperçu)
-              </h3>
-              <ul className="theme-muted flex flex-wrap gap-2 text-[11px] text-slate-400">
-                <li className="rounded-md bg-emerald-950/40 px-2 py-1 text-emerald-200/90">
-                  AR: Mozaïque, Diwan, Al Jazeera, Nawaat, Rassd…
-                </li>
-                <li className="rounded-md bg-white/5 px-2 py-1">FR: Business News, Webdo</li>
-              </ul>
-            </div>
+            {viewMode === "news" ? (
+              <div className="mt-8 border-t border-white/10 pt-4" dir="ltr">
+                <h3 className="theme-muted mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Sources (aperçu)
+                </h3>
+                <ul className="theme-muted flex flex-wrap gap-2 text-[11px] text-slate-400">
+                  <li className="rounded-md bg-emerald-950/40 px-2 py-1 text-emerald-200/90">
+                    AR: Mozaïque, Diwan, Al Jazeera, Nawaat, Rassd…
+                  </li>
+                  <li className="rounded-md bg-white/5 px-2 py-1">FR: Business News, Webdo</li>
+                </ul>
+              </div>
+            ) : null}
           </aside>
 
-          <div
-            className="theme-panel w-full rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center backdrop-blur-sm"
-            dir="ltr"
-          >
-            <p className="theme-muted mb-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">
-              Filtres / مرشحات
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-1">
-              {FILTER_GROUP_IDS.map((id) => (
-                <FilterToggle
-                  key={id}
-                  groupId={id}
-                  on={filterGroups[id]}
-                  onToggle={() => toggleFilterGroup(id)}
-                />
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setFilterGroups(defaultFilterGroups())}
-              className="mt-1 rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[8px] font-medium text-slate-400 transition hover:border-emerald-500/35 hover:text-emerald-200/90"
+          {viewMode === "news" ? (
+            <div
+              className="theme-panel w-full rounded-xl border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center backdrop-blur-sm"
+              dir="ltr"
             >
-              Tout activer
-            </button>
-          </div>
+              <p className="theme-muted mb-1 text-[8px] font-semibold uppercase tracking-wider text-slate-500">
+                Filtres / مرشحات
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-1">
+                {FILTER_GROUP_IDS.map((id) => (
+                  <FilterToggle
+                    key={id}
+                    groupId={id}
+                    on={filterGroups[id]}
+                    onToggle={() => toggleFilterGroup(id)}
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilterGroups(defaultFilterGroups())}
+                className="mt-1 rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[8px] font-medium text-slate-400 transition hover:border-emerald-500/35 hover:text-emerald-200/90"
+              >
+                Tout activer
+              </button>
+            </div>
+          ) : null}
         </div>
       </section>
       ) : (

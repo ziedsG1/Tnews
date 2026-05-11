@@ -32,3 +32,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# per-country reader opinions (created at runtime)
+/data/public-opinions.json
