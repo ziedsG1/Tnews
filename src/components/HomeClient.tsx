@@ -7,6 +7,7 @@ import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
 import { BrandLogo } from "@/components/BrandLogo";
 import { ShareArticleDialog } from "@/components/ShareArticleDialog";
 import { parseStoredTheme, THEME_ORDER, type ThemeMode } from "@/lib/uiTheme";
+import { weatherCodeLabel } from "@/lib/weather";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
 
@@ -132,6 +133,24 @@ type ApiPayload = {
   fetchedAt: string;
 };
 
+type WeatherPayload = {
+  city: string;
+  countryId: string;
+  timezone: string;
+  current: {
+    temperature: number | null;
+    windSpeed: number | null;
+    weatherCode: number | null;
+    time: string | null;
+  };
+  daily: Array<{
+    date: string;
+    max: number | null;
+    min: number | null;
+    weatherCode: number | null;
+  }>;
+};
+
 function formatCardDate(iso: string | null, locale: "ar" | "fr"): string {
   if (!iso) return locale === "ar" ? "بدون تاريخ" : "Sans date";
   const t = Date.parse(iso);
@@ -239,6 +258,11 @@ export function HomeClient() {
   const [country, setCountry] = useState<CountryId>("TN");
   const [uiLang, setUiLang] = useState<UiLang>("ar");
   const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [viewMode, setViewMode] = useState<"news" | "weather">("news");
+  const [weatherData, setWeatherData] = useState<WeatherPayload | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherErr, setWeatherErr] = useState<string | null>(null);
+  const [weatherShareNote, setWeatherShareNote] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<{
     articles: NewsArticle[];
     theme: ThemeMode;
@@ -263,9 +287,32 @@ export function HomeClient() {
     }
   }, [country, uiLang]);
 
+  const loadWeather = useCallback(async () => {
+    setWeatherLoading(true);
+    setWeatherErr(null);
+    try {
+      const res = await fetch(
+        `/api/weather?country=${encodeURIComponent(country)}&lang=${encodeURIComponent(uiLang)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as WeatherPayload;
+      setWeatherData(json);
+    } catch (e) {
+      setWeatherErr(e instanceof Error ? e.message : "Weather fetch failed");
+    } finally {
+      setWeatherLoading(false);
+    }
+  }, [country, uiLang]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (viewMode !== "weather") return;
+    void loadWeather();
+  }, [viewMode, loadWeather]);
 
   useEffect(() => {
     const id = window.setInterval(() => void load(), 6 * 60 * 1000);
@@ -304,6 +351,14 @@ export function HomeClient() {
       ar: {
         searchPlaceholder: "بحث / Search",
         shareHint: "انقر بطاقة لتحديد خبر واحد. نقرتان مزدوجتان: مشاركة (فيسبوك بالرابط، إنستغرام بصورة قصة ٩:١٦ مع صورة المصدر).",
+        weatherButton: "الطقس",
+        newsButton: "الأخبار",
+        weatherTitle: `طقس ${activeCountry.names.ar}`,
+        weatherShare: "مشاركة الطقس",
+        weatherWind: "الرياح",
+        weatherToday: "اليوم",
+        weatherUnavailable: "بيانات الطقس غير متوفرة حاليا.",
+        weatherCopied: "تم نسخ ملخص الطقس.",
         noAr: "لا توجد مقالات حالياً.",
         noFr: "لا توجد مقالات حالياً.",
         selectedTitle: "المحدد",
@@ -317,6 +372,14 @@ export function HomeClient() {
       fr: {
         searchPlaceholder: "Recherche / Search",
         shareHint: "Cliquez une carte pour sélectionner un article. Double-clic : partager (Facebook lien, Instagram story 9:16 avec photo du flux).",
+        weatherButton: "Météo",
+        newsButton: "News",
+        weatherTitle: `Météo ${activeCountry.names.fr}`,
+        weatherShare: "Partager météo",
+        weatherWind: "Vent",
+        weatherToday: "Aujourd'hui",
+        weatherUnavailable: "Météo indisponible pour le moment.",
+        weatherCopied: "Résumé météo copié.",
         noAr: "Aucun article pour le moment.",
         noFr: "Aucun article pour le moment.",
         selectedTitle: "Sélection",
@@ -330,6 +393,14 @@ export function HomeClient() {
       en: {
         searchPlaceholder: "Search / بحث",
         shareHint: "Click a card to select one article. Double-click: share (Facebook link, Instagram 9:16 story with feed photo).",
+        weatherButton: "Weather",
+        newsButton: "News",
+        weatherTitle: `${activeCountry.names.en} weather`,
+        weatherShare: "Share weather",
+        weatherWind: "Wind",
+        weatherToday: "Today",
+        weatherUnavailable: "Weather is unavailable right now.",
+        weatherCopied: "Weather summary copied.",
         noAr: "No articles right now.",
         noFr: "No articles right now.",
         selectedTitle: "Selection",
@@ -444,6 +515,34 @@ export function HomeClient() {
     [theme],
   );
 
+  const shareWeather = useCallback(async () => {
+    if (!weatherData) return;
+    const weatherText = [
+      `${t.weatherTitle} (${weatherData.city})`,
+      `${t.weatherToday}: ${weatherCodeLabel(weatherData.current.weatherCode, uiLang)}`,
+      weatherData.current.temperature != null ? `${Math.round(weatherData.current.temperature)}°C` : "",
+      weatherData.current.windSpeed != null ? `${t.weatherWind}: ${Math.round(weatherData.current.windSpeed)} km/h` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const shareUrl = `${window.location.origin}/api/weather?country=${encodeURIComponent(country)}&lang=${encodeURIComponent(uiLang)}`;
+    try {
+      const nav = navigator as Navigator & {
+        share?: (data: ShareData) => Promise<void>;
+      };
+      if (typeof nav.share === "function") {
+        await nav.share({ title: t.weatherTitle, text: weatherText, url: shareUrl });
+        setWeatherShareNote(null);
+        return;
+      }
+      await navigator.clipboard.writeText(`${weatherText}\n${shareUrl}`);
+      setWeatherShareNote(t.weatherCopied);
+      window.setTimeout(() => setWeatherShareNote(null), 2200);
+    } catch {
+      // ignore user-cancel / permission errors
+    }
+  }, [weatherData, t.weatherTitle, t.weatherToday, t.weatherWind, t.weatherCopied, uiLang, country]);
+
   return (
     <main
       className={`relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8 ${theme === "newspaper" ? "newspaper-main" : ""} ${theme === "broadsheet" ? "broadsheet-main" : ""}`}
@@ -477,6 +576,29 @@ export function HomeClient() {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("news")}
+              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
+                viewMode === "news" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {t.newsButton}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("weather");
+                void loadWeather();
+              }}
+              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
+                viewMode === "weather" ? "bg-sky-600 text-white" : "text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {t.weatherButton}
+            </button>
+          </div>
           <div className="flex max-w-[11rem] flex-wrap items-center justify-end gap-1 rounded-full px-1 py-1 sm:max-w-none">
             {THEME_ORDER.map((mode) => (
               <button
@@ -512,17 +634,24 @@ export function HomeClient() {
           )}
           <button
             type="button"
-            onClick={() => void load()}
-            disabled={loading}
+            onClick={() => {
+              if (viewMode === "weather") {
+                void loadWeather();
+                return;
+              }
+              void load();
+            }}
+            disabled={viewMode === "weather" ? weatherLoading : loading}
             title="Rafraîchir / تحديث"
             aria-label="Rafraîchir les actualités"
             className="rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-md shadow-emerald-900/25 transition hover:brightness-110 disabled:opacity-50 sm:px-3.5 sm:text-xs"
           >
-            {loading ? "…" : "↻"}
+            {(viewMode === "weather" ? weatherLoading : loading) ? "…" : "↻"}
           </button>
         </div>
       </header>
 
+      {viewMode === "news" ? (
       <div className="theme-panel mx-auto w-full max-w-2xl rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
         <input
           id="news-search"
@@ -534,13 +663,15 @@ export function HomeClient() {
         />
         <p className="theme-muted mt-2 text-center text-[10px] leading-snug sm:text-[11px]">{t.shareHint}</p>
       </div>
+      ) : null}
 
-      {err && (
+      {viewMode === "news" && err && (
         <div className="rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
       )}
 
+      {viewMode === "news" ? (
       <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-12">
           <div dir="rtl" lang="ar">
@@ -695,6 +826,75 @@ export function HomeClient() {
           </div>
         </div>
       </section>
+      ) : (
+        <section className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="theme-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <h2 className="theme-headline text-2xl font-bold">{t.weatherTitle}</h2>
+              <button
+                type="button"
+                onClick={() => void shareWeather()}
+                disabled={!weatherData || weatherLoading}
+                className="rounded-lg bg-gradient-to-r from-sky-600 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:brightness-110 disabled:opacity-50"
+              >
+                {t.weatherShare}
+              </button>
+            </div>
+            {weatherShareNote ? <p className="mb-2 text-xs text-emerald-300">{weatherShareNote}</p> : null}
+            {weatherErr ? (
+              <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">{weatherErr}</p>
+            ) : null}
+            {!weatherErr && !weatherLoading && !weatherData ? (
+              <p className="theme-muted text-sm">{t.weatherUnavailable}</p>
+            ) : null}
+            {weatherLoading ? <p className="theme-muted text-sm">Loading weather…</p> : null}
+            {weatherData ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm text-slate-300">{weatherData.city}</p>
+                  <p className="mt-1 text-4xl font-bold text-white">
+                    {weatherData.current.temperature == null ? "—" : `${Math.round(weatherData.current.temperature)}°C`}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-300">{weatherCodeLabel(weatherData.current.weatherCode, uiLang)}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {t.weatherWind}: {weatherData.current.windSpeed == null ? "—" : `${Math.round(weatherData.current.windSpeed)} km/h`}
+                  </p>
+                </div>
+                <ul className="grid gap-2 sm:grid-cols-2">
+                  {weatherData.daily.map((d) => (
+                    <li key={d.date} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                      <p className="text-xs text-slate-400">{new Date(d.date).toLocaleDateString(uiLang === "ar" ? "ar" : "fr-TN")}</p>
+                      <p className="mt-1 text-sm font-semibold text-white">{weatherCodeLabel(d.weatherCode, uiLang)}</p>
+                      <p className="mt-1 text-xs text-slate-300">
+                        {d.max == null ? "—" : `${Math.round(d.max)}°`} / {d.min == null ? "—" : `${Math.round(d.min)}°`}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+          <aside className="theme-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <h3 className="theme-headline text-lg font-semibold text-white">{activeCountry.names[uiLang]}</h3>
+            <p className="theme-muted mt-2 text-sm">
+              {uiLang === "ar"
+                ? "الطقس مرتبط بالدولة المختارة في الأعلى. غيّر الدولة لتحديث التوقعات."
+                : uiLang === "fr"
+                  ? "La météo suit le pays sélectionné ci-dessus. Changez de pays pour actualiser."
+                  : "Weather follows the selected country above. Change country to refresh."}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void loadWeather();
+              }}
+              className="mt-4 rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
+            >
+              ↻
+            </button>
+          </aside>
+        </section>
+      )}
 
       {shareTarget ? (
         <ShareArticleDialog
