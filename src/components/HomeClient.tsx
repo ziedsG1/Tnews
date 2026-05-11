@@ -548,10 +548,10 @@ export function HomeClient() {
       className={`relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8 ${theme === "newspaper" ? "newspaper-main" : ""} ${theme === "broadsheet" ? "broadsheet-main" : ""}`}
     >
       <header
-        className="theme-header sticky top-0 z-50 -mx-4 flex items-center justify-between gap-3 border-b border-white/10 bg-[#05060a]/88 px-4 py-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.85)] backdrop-blur-xl md:-mx-8 md:px-8"
+        className="theme-header sticky top-0 z-50 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#05060a]/88 px-4 py-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.85)] backdrop-blur-xl md:-mx-8 md:px-8"
         dir="ltr"
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="order-1 flex min-w-0 items-center gap-2">
           <BrandLogo theme={theme} className="hidden sm:block" />
           <div className="relative">
             <select
@@ -575,30 +575,7 @@ export function HomeClient() {
             · {activeCountry.names[uiLang]}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
-            <button
-              type="button"
-              onClick={() => setViewMode("news")}
-              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
-                viewMode === "news" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10"
-              }`}
-            >
-              {t.newsButton}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setViewMode("weather");
-                void loadWeather();
-              }}
-              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
-                viewMode === "weather" ? "bg-sky-600 text-white" : "text-slate-300 hover:bg-white/10"
-              }`}
-            >
-              {t.weatherButton}
-            </button>
-          </div>
+        <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3">
           <div className="flex max-w-[11rem] flex-wrap items-center justify-end gap-1 rounded-full px-1 py-1 sm:max-w-none">
             {THEME_ORDER.map((mode) => (
               <button
@@ -648,6 +625,31 @@ export function HomeClient() {
           >
             {(viewMode === "weather" ? weatherLoading : loading) ? "…" : "↻"}
           </button>
+        </div>
+        <div className="order-3 w-full sm:order-2 sm:ml-3 sm:w-auto">
+          <div className="mx-auto flex w-full max-w-[16rem] items-center justify-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1 sm:mx-0 sm:w-auto sm:justify-start">
+            <button
+              type="button"
+              onClick={() => setViewMode("news")}
+              className={`min-h-9 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2.5 sm:py-1 sm:text-[10px] ${
+                viewMode === "news" ? "bg-emerald-600 text-white" : "text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {t.newsButton}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("weather");
+                void loadWeather();
+              }}
+              className={`min-h-9 flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2.5 sm:py-1 sm:text-[10px] ${
+                viewMode === "weather" ? "bg-sky-600 text-white" : "text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {t.weatherButton}
+            </button>
+          </div>
         </div>
       </header>
 
