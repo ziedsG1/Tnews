@@ -398,19 +398,9 @@ async function captureSharePreviewAsJpegBlob(
 type IgShareResult = { kind: "sheet" } | { kind: "tab" } | { kind: "inline"; blob: Blob } | { kind: "fail" };
 
 /**
- * Rasterizes a 9:16 story frame (source photo + headline) → JPEG, then:
- * 1) Web Share with `files` (pick Instagram on the phone), or
- * 2) `window.open(blob:…)` so the new tab shows only the image (reliable on iOS vs. writing to about:blank), or
- * 3) `inline` so the host UI can show the image here if pop-ups are blocked.
+ * Share a JPEG (story card) like Instagram: Web Share with `files`, then tab / inline fallbacks.
  */
-async function shareInstagramStoryFromPreview(
-  storyRoot: HTMLElement | null,
-  article: NewsArticle,
-  captureTheme: ThemeMode,
-  compact: boolean,
-): Promise<IgShareResult> {
-  const blob = await captureSharePreviewAsJpegBlob(storyRoot, captureTheme, compact);
-  if (!blob) return { kind: "fail" };
+async function shareStoryJpegBlobViaSheetOrFallback(blob: Blob, article: NewsArticle): Promise<IgShareResult> {
   const filename = sharePreviewImageFilename(article);
   const title = article.translatedTitle ?? article.title;
   const file = new File([blob], filename, { type: "image/jpeg" });
@@ -420,8 +410,7 @@ async function shareInstagramStoryFromPreview(
   };
   if (typeof nav.share === "function") {
     const data: ShareData = { files: [file], title };
-    const allowed =
-      typeof nav.canShare !== "function" ? true : Boolean(nav.canShare(data));
+    const allowed = typeof nav.canShare !== "function" ? true : Boolean(nav.canShare(data));
     if (allowed) {
       try {
         await nav.share(data);
@@ -434,7 +423,6 @@ async function shareInstagramStoryFromPreview(
     }
   }
 
-  // iOS Safari often shows an empty tab for `window.open(blob:…)` after async work; show the image in-app instead.
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
   if (/iPhone|iPad|iPod/i.test(ua)) {
     return { kind: "inline", blob };
@@ -457,6 +445,20 @@ async function shareInstagramStoryFromPreview(
   }
   URL.revokeObjectURL(url);
   return { kind: "inline", blob };
+}
+
+/**
+ * Rasterizes a 9:16 story frame (source photo + headline) → JPEG, then same share path as Facebook photo share.
+ */
+async function shareInstagramStoryFromPreview(
+  storyRoot: HTMLElement | null,
+  article: NewsArticle,
+  captureTheme: ThemeMode,
+  compact: boolean,
+): Promise<IgShareResult> {
+  const blob = await captureSharePreviewAsJpegBlob(storyRoot, captureTheme, compact);
+  if (!blob) return { kind: "fail" };
+  return shareStoryJpegBlobViaSheetOrFallback(blob, article);
 }
 
 /** Split body copy for left / right columns (RTL-safe: prefers word/space break). */
@@ -591,6 +593,7 @@ type ShareLabels = {
   noPreview: string;
   close: string;
   facebook: string;
+  facebookBusy: string;
   instagram: string;
   instagramBusy: string;
   igFail: string;
@@ -603,10 +606,11 @@ type ShareLabels = {
 const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   ar: {
     title: "مشاركة",
-    subtitle: "فيسبوك: رابط المصدر. إنستغرام: صورة قصة ٩:١٦ مع صورة المصدر من الخلاصة إن وُجدت.",
+    subtitle: "فيسبوك وإنستغرام: نفس صورة القصة ٩:١٦ (صورة الخلاصة إن وُجدت). اختر التطبيق من ورقة المشاركة.",
     noPreview: "لا يوجد خبر.",
     close: "إغلاق",
-    facebook: "فيسبوك — منشور",
+    facebook: "فيسبوك — منشور (صورة القصة)",
+    facebookBusy: "جاري تجهيز صورة فيسبوك…",
     instagram: "إنستغرام — قصة (صورة المعاينة)",
     instagramBusy: "جاري تجهيز الصورة…",
     igFail:
@@ -621,10 +625,11 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   },
   fr: {
     title: "Partager",
-    subtitle: "Facebook : lien source. Instagram : image story 9:16 avec la photo du flux si disponible.",
+    subtitle: "Facebook et Instagram : la même image story 9:16 (photo du flux si dispo). Choisissez l’app dans la feuille de partage.",
     noPreview: "Aucun article.",
     close: "Fermer",
-    facebook: "Facebook — publication",
+    facebook: "Facebook — publication (image story)",
+    facebookBusy: "Préparation de l’image Facebook…",
     instagram: "Instagram — story (image d’aperçu)",
     instagramBusy: "Préparation de l’image…",
     igFail:
@@ -639,10 +644,11 @@ const LABELS: Record<"ar" | "fr" | "en", ShareLabels> = {
   },
   en: {
     title: "Share",
-    subtitle: "Facebook: source link. Instagram: 9:16 story image with the feed photo when available.",
+    subtitle: "Facebook and Instagram use the same 9:16 story image (feed photo when available). Pick the app in the share sheet.",
     noPreview: "No article.",
     close: "Close",
-    facebook: "Facebook — feed post",
+    facebook: "Facebook — post (story image)",
+    facebookBusy: "Preparing Facebook image…",
     instagram: "Instagram — story (preview image)",
     instagramBusy: "Preparing image…",
     igFail:
@@ -1014,6 +1020,10 @@ export function ShareArticleDialog({
   const [igBusy, setIgBusy] = useState(false);
   const [igTabNote, setIgTabNote] = useState(false);
   const [igErr, setIgErr] = useState<string | null>(null);
+  const [fbBusy, setFbBusy] = useState(false);
+  const [fbTabNote, setFbTabNote] = useState(false);
+  const [fbErr, setFbErr] = useState<string | null>(null);
+  const [fbInlineImageUrl, setFbInlineImageUrl] = useState<string | null>(null);
   const [narrow, setNarrow] = useState(false);
   const [inlineImageUrl, setInlineImageUrl] = useState<string | null>(null);
 
@@ -1028,30 +1038,60 @@ export function ShareArticleDialog({
   useEffect(() => {
     return () => {
       if (inlineImageUrl) URL.revokeObjectURL(inlineImageUrl);
+      if (fbInlineImageUrl) URL.revokeObjectURL(fbInlineImageUrl);
     };
-  }, [inlineImageUrl]);
+  }, [inlineImageUrl, fbInlineImageUrl]);
 
   const compactCapture = narrow || inAppBrowserLikely();
 
   const runFacebookShare = useCallback(async () => {
     if (!article) return;
-    const title = article.translatedTitle ?? article.title;
-    const nav = navigator as Navigator & {
-      share?: (data: ShareData) => Promise<void>;
-    };
-    if (typeof nav.share === "function") {
-      try {
-        await nav.share({ title, text: title, url: article.link });
+    setIgErr(null);
+    setIgTabNote(false);
+    setInlineImageUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setFbErr(null);
+    setFbTabNote(false);
+    setFbInlineImageUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setFbBusy(true);
+    try {
+      flushSync(() => setStoryRevealForCapture(true));
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      await new Promise<void>((r) => window.setTimeout(() => r(), 320));
+      const blob = await captureSharePreviewAsJpegBlob(storyCaptureRef.current, captureTheme, compactCapture);
+      if (!blob) {
+        setFbErr(inAppBrowserLikely() ? labels.igFailInApp : labels.igFail);
+        window.open(facebookFeedShareUrl(article.link), "_blank", "noopener,noreferrer");
         return;
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") return;
       }
+      const outcome = await shareStoryJpegBlobViaSheetOrFallback(blob, article);
+      if (outcome.kind === "tab") {
+        setFbTabNote(true);
+      } else if (outcome.kind === "inline") {
+        setFbInlineImageUrl(URL.createObjectURL(outcome.blob));
+      }
+    } catch {
+      setFbErr(inAppBrowserLikely() ? labels.igFailInApp : labels.igFail);
+      window.open(facebookFeedShareUrl(article.link), "_blank", "noopener,noreferrer");
+    } finally {
+      flushSync(() => setStoryRevealForCapture(false));
+      setFbBusy(false);
     }
-    window.open(facebookFeedShareUrl(article.link), "_blank", "noopener,noreferrer");
-  }, [article]);
+  }, [article, captureTheme, compactCapture, labels.igFail, labels.igFailInApp]);
 
   const runInstagramShare = useCallback(async () => {
     if (!article) return;
+    setFbErr(null);
+    setFbTabNote(false);
+    setFbInlineImageUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setIgErr(null);
     setIgTabNote(false);
     setInlineImageUrl((prev) => {
@@ -1144,14 +1184,15 @@ export function ShareArticleDialog({
             <div className="relative z-10 mt-4 flex flex-col gap-2">
               <button
                 type="button"
-                className={btnFb}
+                disabled={fbBusy || igBusy}
+                className={`${btnFb} disabled:opacity-50`}
                 onClick={() => void runFacebookShare()}
               >
-                {labels.facebook}
+                {fbBusy ? labels.facebookBusy : labels.facebook}
               </button>
               <button
                 type="button"
-                disabled={igBusy}
+                disabled={igBusy || fbBusy}
                 className={`${btnIg} disabled:opacity-50`}
                 onClick={() => void runInstagramShare()}
               >
@@ -1159,7 +1200,11 @@ export function ShareArticleDialog({
               </button>
             </div>
             {igErr ? <p className="mt-2 text-center text-sm text-red-400">{igErr}</p> : null}
+            {fbErr ? <p className="mt-2 text-center text-sm text-red-400">{fbErr}</p> : null}
             {igTabNote && !inlineImageUrl ? (
+              <p className="mt-2 text-center text-sm text-emerald-300/95">{labels.igOpenedTabNote}</p>
+            ) : null}
+            {fbTabNote && !fbInlineImageUrl ? (
               <p className="mt-2 text-center text-sm text-emerald-300/95">{labels.igOpenedTabNote}</p>
             ) : null}
             {inlineImageUrl ? (
@@ -1167,6 +1212,17 @@ export function ShareArticleDialog({
                 <p className="text-center text-sm font-medium text-amber-100/95">{labels.igInlineHint}</p>
                 <img
                   src={inlineImageUrl}
+                  alt=""
+                  className="mx-auto max-h-[min(65vh,560px)] max-w-full rounded-lg border border-white/15 object-contain"
+                />
+                <p className="theme-muted text-center text-[11px] leading-snug text-slate-400">{labels.igTabHint}</p>
+              </div>
+            ) : null}
+            {fbInlineImageUrl ? (
+              <div className="mt-3 space-y-2 rounded-xl border border-amber-400/30 bg-black/40 p-3">
+                <p className="text-center text-sm font-medium text-amber-100/95">{labels.igInlineHint}</p>
+                <img
+                  src={fbInlineImageUrl}
                   alt=""
                   className="mx-auto max-h-[min(65vh,560px)] max-w-full rounded-lg border border-white/15 object-contain"
                 />
