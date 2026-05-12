@@ -1,7 +1,27 @@
 import type { FeedKind, FeedLocale, FeedSource } from "./feeds";
 import { DEFAULT_FEEDS } from "./feeds";
 
-export type CountryId = "TN" | "DZ" | "MA" | "FR" | "US" | "EG" | "QA" | "SA" | "GB" | "IT";
+export type CountryId =
+  | "TN"
+  | "DZ"
+  | "MA"
+  | "FR"
+  | "US"
+  | "EG"
+  | "QA"
+  | "SA"
+  | "GB"
+  | "IT"
+  | "IL"
+  | "ES"
+  | "DE"
+  | "TR"
+  | "LY"
+  | "IR"
+  | "RU"
+  | "JP"
+  | "CN"
+  | "IN";
 export type UiLang = "ar" | "fr" | "en";
 
 export type CountryConfig = {
@@ -181,6 +201,166 @@ export const COUNTRIES: CountryConfig[] = [
       feed("ansa-it", "ANSA", "https://www.ansa.it/sito/ansait_rss.xml", "fr", "major"),
       feed("ilpost-it", "Il Post", "https://www.ilpost.it/feed/", "fr", "independent"),
       feed("rai-radio-it", "RAI Radio (Google News)", gnSearch("RAI radio Italia", { hl: "it", gl: "IT", ceid: "IT:it" }), "fr", "radio"),
+    ],
+  },
+  {
+    id: "IL",
+    brand: "ILnews",
+    names: {
+      ar: "إسرائيل",
+      fr: "Israël",
+      en: "Israel",
+    },
+    primaryLocale: "ar",
+    feeds: [
+      feed("gn-il-en", "Google News Israel", gnTopNews({ hl: "en", gl: "IL", ceid: "IL:en" }), "ar", "major"),
+      feed("gn-il-ar", "أخبار إسرائيل (Google News)", gnSearch("إسرائيل", { hl: "ar", gl: "IL", ceid: "IL:ar" }), "ar", "major"),
+      feed("gn-il-he", "Google News (עברית)", gnTopNews({ hl: "he", gl: "IL", ceid: "IL:he" }), "fr", "major"),
+      feed("gn-il-haaretz", "Haaretz (Google News)", gnSearch("site:haaretz.com", { hl: "en", gl: "IL", ceid: "IL:en" }), "fr", "independent"),
+    ],
+  },
+  {
+    id: "ES",
+    brand: "ESnews",
+    names: {
+      ar: "إسبانيا",
+      fr: "Espagne",
+      en: "Spain",
+    },
+    primaryLocale: "fr",
+    feeds: [
+      feed("gn-es-es", "Google News España", gnTopNews({ hl: "es", gl: "ES", ceid: "ES:es" }), "fr", "major"),
+      feed("elpais-es", "El País", "https://feeds.elpais.com/m/rss-s/pages/ep/site/elpais.com/portada", "fr", "major"),
+      feed("eldiario-es", "elDiario.es", "https://www.eldiario.es/rss/", "fr", "independent"),
+      feed("gn-es-radio", "Radio España (Google News)", gnSearch("radio España noticias", { hl: "es", gl: "ES", ceid: "ES:es" }), "fr", "radio"),
+    ],
+  },
+  {
+    id: "DE",
+    brand: "DEnews",
+    names: {
+      ar: "ألمانيا",
+      fr: "Allemagne",
+      en: "Germany",
+    },
+    primaryLocale: "fr",
+    feeds: [
+      feed("gn-de-de", "Google News Deutschland", gnTopNews({ hl: "de", gl: "DE", ceid: "DE:de" }), "fr", "major"),
+      feed("spiegel-de", "Der Spiegel", "https://www.spiegel.de/schlagzeilen/index.rss", "fr", "major"),
+      feed("taz-de", "taz", "https://taz.de/!p4608/rss.xml", "fr", "independent"),
+      feed("gn-de-radio", "Deutschlandradio (Google News)", gnSearch("Deutschlandradio", { hl: "de", gl: "DE", ceid: "DE:de" }), "fr", "radio"),
+    ],
+  },
+  {
+    id: "TR",
+    brand: "TRnews",
+    names: {
+      ar: "تركيا",
+      fr: "Turquie",
+      en: "Turkey",
+    },
+    primaryLocale: "ar",
+    feeds: [
+      feed("gn-tr-tr", "Google News Türkiye", gnTopNews({ hl: "tr", gl: "TR", ceid: "TR:tr" }), "ar", "major"),
+      feed("gn-tr-ar", "أخبار تركيا (Google News)", gnSearch("تركيا", { hl: "ar", gl: "TR", ceid: "TR:ar" }), "ar", "major"),
+      feed("gn-tr-top-ar", "الأكثر تداولا (Google News)", gnTopNews({ hl: "ar", gl: "TR", ceid: "TR:ar" }), "ar", "major"),
+      feed("gn-tr-indie", "صحافة مستقلة (Google News)", gnSearch("تركيا independent journalism", { hl: "ar", gl: "TR", ceid: "TR:ar" }), "ar", "independent"),
+    ],
+  },
+  {
+    id: "LY",
+    brand: "LYnews",
+    names: {
+      ar: "ليبيا",
+      fr: "Libye",
+      en: "Libya",
+    },
+    primaryLocale: "ar",
+    feeds: [
+      feed("gn-ly-ar", "أخبار ليبيا (Google News)", gnSearch("ليبيا", { hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
+      feed("gn-ly-top-ar", "الأكثر تداولا (Google News)", gnTopNews({ hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
+      feed("gn-ly-tripoli", "طرابلس (Google News)", gnSearch("طرابلس ليبيا", { hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
+      feed("gn-ly-benghazi", "بنغازي (Google News)", gnSearch("بنغازي ليبيا", { hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
+    ],
+  },
+  {
+    id: "IR",
+    brand: "IRnews",
+    names: {
+      ar: "إيران",
+      fr: "Iran",
+      en: "Iran",
+    },
+    primaryLocale: "ar",
+    feeds: [
+      feed("gn-ir-fa", "Google News ایران", gnTopNews({ hl: "fa", gl: "IR", ceid: "IR:fa" }), "ar", "major"),
+      feed("gn-ir-ar", "أخبار إيران (Google News)", gnSearch("إيران", { hl: "ar", gl: "IR", ceid: "IR:ar" }), "ar", "major"),
+      feed("gn-ir-en", "Iran (Google News EN)", gnTopNews({ hl: "en", gl: "IR", ceid: "IR:en" }), "fr", "major"),
+      feed("gn-ir-bbc", "BBC Persian (Google News)", gnSearch("site:bbc.com/persian", { hl: "fa", gl: "IR", ceid: "IR:fa" }), "ar", "independent"),
+    ],
+  },
+  {
+    id: "RU",
+    brand: "RUnews",
+    names: {
+      ar: "روسيا",
+      fr: "Russie",
+      en: "Russia",
+    },
+    primaryLocale: "fr",
+    feeds: [
+      feed("gn-ru-ru", "Google News Россия", gnTopNews({ hl: "ru", gl: "RU", ceid: "RU:ru" }), "fr", "major"),
+      feed("gn-ru-en", "Russia (Google News EN)", gnTopNews({ hl: "en", gl: "RU", ceid: "RU:en" }), "fr", "major"),
+      feed("gn-ru-ar", "روسيا (Google News)", gnSearch("روسيا", { hl: "ar", gl: "RU", ceid: "RU:ar" }), "ar", "major"),
+      feed("gn-ru-meduza", "Meduza (Google News)", gnSearch("site:meduza.io", { hl: "en", gl: "RU", ceid: "RU:en" }), "fr", "independent"),
+    ],
+  },
+  {
+    id: "JP",
+    brand: "JPnews",
+    names: {
+      ar: "اليابان",
+      fr: "Japon",
+      en: "Japan",
+    },
+    primaryLocale: "fr",
+    feeds: [
+      feed("gn-jp-jp", "Google ニュース", gnTopNews({ hl: "ja", gl: "JP", ceid: "JP:ja" }), "fr", "major"),
+      feed("gn-jp-en", "Japan (Google News EN)", gnTopNews({ hl: "en", gl: "JP", ceid: "JP:en" }), "fr", "major"),
+      feed("nhk-en", "NHK World", "https://www3.nhk.or.jp/nhkworld/en/news/rss/today.xml", "fr", "major"),
+      feed("gn-jp-indie", "Japan independent (Google News)", gnSearch("Japan independent journalism", { hl: "en", gl: "JP", ceid: "JP:en" }), "fr", "independent"),
+    ],
+  },
+  {
+    id: "CN",
+    brand: "CNnews",
+    names: {
+      ar: "الصين",
+      fr: "Chine",
+      en: "China",
+    },
+    primaryLocale: "fr",
+    feeds: [
+      feed("gn-cn-zh", "Google新闻 中国", gnTopNews({ hl: "zh-CN", gl: "CN", ceid: "CN:zh-Hans" }), "fr", "major"),
+      feed("gn-cn-en", "China (Google News EN)", gnTopNews({ hl: "en", gl: "CN", ceid: "CN:en" }), "fr", "major"),
+      feed("gn-cn-ar", "الصين (Google News)", gnSearch("الصين", { hl: "ar", gl: "CN", ceid: "CN:ar" }), "ar", "major"),
+      feed("gn-cn-scmp", "South China Morning Post (GN)", gnSearch("site:scmp.com", { hl: "en", gl: "CN", ceid: "CN:en" }), "fr", "independent"),
+    ],
+  },
+  {
+    id: "IN",
+    brand: "INnews",
+    names: {
+      ar: "الهند",
+      fr: "Inde",
+      en: "India",
+    },
+    primaryLocale: "fr",
+    feeds: [
+      feed("gn-in-en", "Google News India", gnTopNews({ hl: "en", gl: "IN", ceid: "IN:en" }), "fr", "major"),
+      feed("gn-in-hi", "Google News भारत", gnTopNews({ hl: "hi", gl: "IN", ceid: "IN:hi" }), "fr", "major"),
+      feed("gn-in-ar", "الهند (Google News)", gnSearch("الهند", { hl: "ar", gl: "IN", ceid: "IN:ar" }), "ar", "major"),
+      feed("gn-in-scroll", "Scroll.in (Google News)", gnSearch("site:scroll.in", { hl: "en", gl: "IN", ceid: "IN:en" }), "fr", "independent"),
     ],
   },
 ];

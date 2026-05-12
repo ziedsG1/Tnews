@@ -18,6 +18,16 @@ export const COUNTRY_WEATHER: Record<CountryId, CountryWeatherConfig> = {
   SA: { city: "Riyadh", latitude: 24.7136, longitude: 46.6753, timezone: "Asia/Riyadh" },
   GB: { city: "London", latitude: 51.5072, longitude: -0.1276, timezone: "Europe/London" },
   IT: { city: "Rome", latitude: 41.9028, longitude: 12.4964, timezone: "Europe/Rome" },
+  IL: { city: "Tel Aviv", latitude: 32.0853, longitude: 34.7818, timezone: "Asia/Jerusalem" },
+  ES: { city: "Madrid", latitude: 40.4168, longitude: -3.7038, timezone: "Europe/Madrid" },
+  DE: { city: "Berlin", latitude: 52.52, longitude: 13.405, timezone: "Europe/Berlin" },
+  TR: { city: "Istanbul", latitude: 41.0082, longitude: 28.9784, timezone: "Europe/Istanbul" },
+  LY: { city: "Tripoli", latitude: 32.8872, longitude: 13.1913, timezone: "Africa/Tripoli" },
+  IR: { city: "Tehran", latitude: 35.6892, longitude: 51.389, timezone: "Asia/Tehran" },
+  RU: { city: "Moscow", latitude: 55.7558, longitude: 37.6173, timezone: "Europe/Moscow" },
+  JP: { city: "Tokyo", latitude: 35.6762, longitude: 139.6503, timezone: "Asia/Tokyo" },
+  CN: { city: "Beijing", latitude: 39.9042, longitude: 116.4074, timezone: "Asia/Shanghai" },
+  IN: { city: "New Delhi", latitude: 28.6139, longitude: 77.209, timezone: "Asia/Kolkata" },
 };
 
 const WEATHER_CODE_LABELS: Record<number, { en: string; fr: string; ar: string }> = {
