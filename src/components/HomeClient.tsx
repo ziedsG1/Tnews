@@ -4,13 +4,14 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
+import { ArticleCard } from "@/components/ArticleCard";
 import { BrandLogo } from "@/components/BrandLogo";
+import { PublicOpinionsPanel, type PublicOpinionsLabels } from "@/components/PublicOpinionsPanel";
 import { ShareArticleDialog } from "@/components/ShareArticleDialog";
 import { ShareWeatherDialog } from "@/components/ShareWeatherDialog";
 import { parseStoredTheme, THEME_ORDER, type ThemeMode } from "@/lib/uiTheme";
 import { weatherCodeEmoji, weatherCodeLabel } from "@/lib/weather";
-import type { StoredOpinion } from "@/lib/publicOpinions";
-import { opinionToArticle } from "@/lib/publicOpinions";
+import { createClient } from "@/lib/supabase/client";
 
 const FILTER_GROUP_IDS: TopicFilterGroup[] = [1, 2, 3, 4];
 
@@ -173,81 +174,6 @@ function byArticleDateDesc(a: NewsArticle, b: NewsArticle): number {
   return a.id.localeCompare(b.id);
 }
 
-function ArticleCard({
-  article,
-  onSelect,
-  active,
-  onShareDoubleClick,
-}: {
-  article: NewsArticle;
-  onSelect: () => void;
-  active: boolean;
-  onShareDoubleClick?: () => void;
-}) {
-  const rtl = article.locale === "ar";
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect()}
-      onDoubleClick={(e) => {
-        if (!onShareDoubleClick) return;
-        e.preventDefault();
-        onShareDoubleClick();
-      }}
-      dir={rtl ? "rtl" : "ltr"}
-      lang={rtl ? "ar" : "fr"}
-      className={`relative w-full rounded-xl border p-4 pt-7 text-start transition sm:pt-4 ${
-        active
-          ? "theme-card theme-card-active border-rose-400/60 bg-rose-500/10 ring-2 ring-emerald-400/40"
-          : "theme-card border-white/10 bg-white/[0.02] hover:border-emerald-400/35 hover:bg-white/[0.05]"
-      }`}
-    >
-      <span
-        className={`absolute left-3 top-2 flex h-4 w-4 items-center justify-center rounded border text-[9px] font-bold sm:left-auto sm:right-3 ${rtl ? "left-auto right-3" : ""} ${
-          active ? "border-emerald-400 bg-emerald-500/30 text-emerald-100" : "border-white/25 bg-black/20 text-transparent"
-        }`}
-        aria-hidden
-      >
-        ✓
-      </span>
-      <span className="flex flex-wrap items-center gap-1.5">
-        {article.independentMedia && (
-          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">
-            Indé
-          </span>
-        )}
-        {article.sourceKind === "radio" && (
-          <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-200">
-            Radio
-          </span>
-        )}
-        {article.sourceKind === "state" && (
-          <span className="rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-200">
-            State
-          </span>
-        )}
-        {article.sourceKind === "opinion" && (
-          <span className="rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-200">
-            {rtl ? "رأي" : "Opinion"}
-          </span>
-        )}
-        <span
-          className={`text-[10px] font-semibold uppercase tracking-wide ${rtl ? "text-emerald-300/90" : "text-rose-400/90"}`}
-        >
-          {article.sourceLabel}
-        </span>
-      </span>
-      <time dateTime={article.pubDate ?? undefined} className="theme-muted mt-1 block text-[10px] text-slate-400">
-        {formatCardDate(article.pubDate, article.locale)}
-      </time>
-      <p className={`theme-headline mt-1 line-clamp-3 text-sm leading-snug text-slate-100 ${rtl ? "font-medium" : ""}`}>
-        {article.translatedTitle ?? article.title}
-      </p>
-      <span className="theme-muted mt-2 inline-block text-[10px] text-slate-500">{article.topic}</span>
-    </button>
-  );
-}
-
 const defaultFilterGroups = (): Record<TopicFilterGroup, boolean> => ({
   1: true,
   2: true,
@@ -271,14 +197,10 @@ export function HomeClient() {
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherErr, setWeatherErr] = useState<string | null>(null);
   const [weatherShareOpen, setWeatherShareOpen] = useState(false);
-  const [opinionsRaw, setOpinionsRaw] = useState<StoredOpinion[]>([]);
   const [opinionsLoading, setOpinionsLoading] = useState(false);
   const [opinionsErr, setOpinionsErr] = useState<string | null>(null);
-  const [opinionBody, setOpinionBody] = useState("");
-  const [opinionAuthor, setOpinionAuthor] = useState("");
-  const [opinionPosting, setOpinionPosting] = useState(false);
-  const [opinionDoneNote, setOpinionDoneNote] = useState<string | null>(null);
-  const [siteOrigin, setSiteOrigin] = useState("");
+  const [opinionFeedArticles, setOpinionFeedArticles] = useState<NewsArticle[]>([]);
+  const [opinionsReloadKey, setOpinionsReloadKey] = useState(0);
   const [shareTarget, setShareTarget] = useState<{
     articles: NewsArticle[];
     theme: ThemeMode;
@@ -308,21 +230,6 @@ export function HomeClient() {
     }
   }, [country, uiLang]);
 
-  const loadOpinions = useCallback(async () => {
-    setOpinionsLoading(true);
-    setOpinionsErr(null);
-    try {
-      const res = await fetch(`/api/opinions?country=${encodeURIComponent(country)}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as { opinions: StoredOpinion[] };
-      setOpinionsRaw(Array.isArray(json.opinions) ? json.opinions : []);
-    } catch (e) {
-      setOpinionsErr(e instanceof Error ? e.message : "Opinions load failed");
-    } finally {
-      setOpinionsLoading(false);
-    }
-  }, [country]);
-
   const loadWeather = useCallback(async () => {
     setWeatherLoading(true);
     setWeatherErr(null);
@@ -351,14 +258,11 @@ export function HomeClient() {
   }, [viewMode, loadWeather]);
 
   useEffect(() => {
-    if (viewMode !== "opinions") return;
-    void loadOpinions();
-  }, [viewMode, loadOpinions]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setSiteOrigin(window.location.origin);
-  }, []);
+    if (viewMode !== "opinions") {
+      setOpinionFeedArticles([]);
+      setOpinionsErr(null);
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     if (viewMode !== "weather") setWeatherShareOpen(false);
@@ -396,6 +300,24 @@ export function HomeClient() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  /** After magic link, send user to `?next=/path` if they are already signed in. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+    const u = new URL(window.location.href);
+    const next = u.searchParams.get("next");
+    if (!next || !next.startsWith("/") || next.startsWith("//")) return;
+    const supabase = createClient();
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) return;
+      u.searchParams.delete("next");
+      const qs = u.searchParams.toString();
+      const clean = u.pathname + (qs ? `?${qs}` : "") || "/";
+      window.history.replaceState({}, "", clean);
+      window.location.assign(next);
+    });
+  }, []);
+
   const t = useMemo(() => {
     const byLang = {
       ar: {
@@ -409,14 +331,23 @@ export function HomeClient() {
         opinionsTitle: `رأي العام — ${activeCountry.names.ar}`,
         opinionsSearchHint: "ابحث في الآراء المنشورة.",
         opinionsComposerHint:
-          "انشر رأيك كتابياً. يظهر للجميع كبطاقة في هذا القسم للدولة المختارة. المحتوى مسؤولية كاتبه وليس تحريراً صحافياً.",
+          "سجّل الدخول بالبريد. تظهر آراء المسجّلين فقط في هذا القسم حسب الدولة. المحتوى مسؤولية صاحبه.",
         opinionsPlaceholder: "اكتب رأيك هنا…",
-        opinionsAuthorPlaceholder: "اسم أو كنية (اختياري)",
         opinionsSubmit: "نشر الرأي",
         opinionsPosting: "جاري النشر…",
         opinionsEmpty: "لا توجد آراء بعد لهذا البلد. كن أول من يكتب.",
         opinionPosted: "تم نشر الرأي.",
         opinionsSidebarNote: "هذا منشور من القارئ في قسم «رأي العام» وليس من أسلاك الأخبار.",
+        opinionsAuthTitle: "تسجيل الدخول — رأي العام",
+        opinionsAuthHint:
+          "أدخل بريدك الإلكتروني لإرسال رابط تسجيل دخول لمرة واحدة. بعد الدخول يمكنك قراءة آراء المسجّلين ونشر رأيك.",
+        opinionsEmailPlaceholder: "البريد الإلكتروني",
+        opinionsSendMagicLink: "إرسال الرابط",
+        opinionsCheckEmail: "تحقق من بريدك واضغط الرابط للدخول.",
+        opinionsSignOut: "خروج",
+        opinionsMyProfile: "ملفي",
+        opinionsConfigureSupabase:
+          "لم يُضبط Supabase: أضف NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY في البيئة، وطبّق SQL من مجلد supabase/migrations في لوحة Supabase.",
         weatherWind: "الرياح",
         weatherToday: "اليوم",
         weatherUnavailable: "بيانات الطقس غير متوفرة حاليا.",
@@ -441,14 +372,23 @@ export function HomeClient() {
         opinionsTitle: `Opinion publique — ${activeCountry.names.fr}`,
         opinionsSearchHint: "Rechercher parmi les avis publiés.",
         opinionsComposerHint:
-          "Publiez votre avis. Il apparaît comme une carte dans cette section pour le pays sélectionné. Le contenu engage son auteur, pas la rédaction.",
+          "Connectez-vous par e-mail. Seuls les avis des personnes inscrites apparaissent ici, par pays. Le contenu engage son auteur.",
         opinionsPlaceholder: "Votre avis…",
-        opinionsAuthorPlaceholder: "Pseudo ou prénom (optionnel)",
         opinionsSubmit: "Publier",
         opinionsPosting: "Publication…",
         opinionsEmpty: "Aucun avis pour ce pays pour le moment. Soyez le premier.",
         opinionPosted: "Avis publié.",
         opinionsSidebarNote: "Texte publié par un lecteur dans « Opinion publique », pas un fil de presse.",
+        opinionsAuthTitle: "Connexion — Opinion publique",
+        opinionsAuthHint:
+          "Entrez votre e-mail pour recevoir un lien de connexion (magic link). Ensuite vous lisez les avis inscrits et vous publiez le vôtre.",
+        opinionsEmailPlaceholder: "E-mail",
+        opinionsSendMagicLink: "Envoyer le lien",
+        opinionsCheckEmail: "Vérifiez votre boîte mail et cliquez sur le lien.",
+        opinionsSignOut: "Déconnexion",
+        opinionsMyProfile: "Mon profil",
+        opinionsConfigureSupabase:
+          "Supabase non configuré : ajoutez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY, puis exécutez le SQL du dossier supabase/migrations dans le dashboard Supabase.",
         weatherWind: "Vent",
         weatherToday: "Aujourd'hui",
         weatherUnavailable: "Météo indisponible pour le moment.",
@@ -473,14 +413,23 @@ export function HomeClient() {
         opinionsTitle: `Public opinion — ${activeCountry.names.en}`,
         opinionsSearchHint: "Search published opinions.",
         opinionsComposerHint:
-          "Post your opinion. It appears as a card in this section for the selected country. Content is the author’s responsibility, not editorial.",
+          "Sign in with email. Only signed-in members’ posts appear here, by country. You are responsible for what you write.",
         opinionsPlaceholder: "Write your opinion…",
-        opinionsAuthorPlaceholder: "Name or nickname (optional)",
         opinionsSubmit: "Post",
         opinionsPosting: "Posting…",
         opinionsEmpty: "No opinions for this country yet. Be the first.",
         opinionPosted: "Posted.",
         opinionsSidebarNote: "Reader post in “Public opinion”, not a news wire.",
+        opinionsAuthTitle: "Sign in — Public opinion",
+        opinionsAuthHint:
+          "Enter your email to receive a one-time magic link. After signing in you can read members’ posts and publish your own.",
+        opinionsEmailPlaceholder: "Email",
+        opinionsSendMagicLink: "Send magic link",
+        opinionsCheckEmail: "Check your inbox and tap the link to sign in.",
+        opinionsSignOut: "Sign out",
+        opinionsMyProfile: "My profile",
+        opinionsConfigureSupabase:
+          "Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY, then run the SQL in supabase/migrations in your Supabase project.",
         weatherWind: "Wind",
         weatherToday: "Today",
         weatherUnavailable: "Weather is unavailable right now.",
@@ -497,6 +446,27 @@ export function HomeClient() {
     } as const;
     return byLang[uiLang];
   }, [uiLang, activeCountry]);
+
+  const opinionsLabels = useMemo<PublicOpinionsLabels>(
+    () => ({
+      opinionsTitle: t.opinionsTitle,
+      opinionsComposerHint: t.opinionsComposerHint,
+      opinionsPlaceholder: t.opinionsPlaceholder,
+      opinionsSubmit: t.opinionsSubmit,
+      opinionsPosting: t.opinionsPosting,
+      opinionsEmpty: t.opinionsEmpty,
+      opinionPosted: t.opinionPosted,
+      opinionsAuthTitle: t.opinionsAuthTitle,
+      opinionsAuthHint: t.opinionsAuthHint,
+      opinionsEmailPlaceholder: t.opinionsEmailPlaceholder,
+      opinionsSendMagicLink: t.opinionsSendMagicLink,
+      opinionsCheckEmail: t.opinionsCheckEmail,
+      opinionsSignOut: t.opinionsSignOut,
+      opinionsMyProfile: t.opinionsMyProfile,
+      opinionsConfigureSupabase: t.opinionsConfigureSupabase,
+    }),
+    [t],
+  );
 
   const filteredArticles = useMemo(() => {
     const articles = data?.articles ?? [];
@@ -520,23 +490,6 @@ export function HomeClient() {
     });
   }, [filteredArticles, searchQuery]);
 
-  const opinionArticles = useMemo(
-    () => opinionsRaw.map((o) => opinionToArticle(o, uiLang, siteOrigin)),
-    [opinionsRaw, uiLang, siteOrigin],
-  );
-
-  const searchedOpinions = useMemo(() => {
-    const { phrase, tokenGroups } = searchTerms(searchQuery);
-    if (!phrase) return opinionArticles;
-    return opinionArticles.filter((a) => {
-      const haystack = normalizeForSearch(
-        `${a.translatedTitle ?? a.title} ${a.title} ${a.summary ?? ""} ${a.sourceLabel} ${a.topic}`,
-      );
-      if (haystack.includes(phrase)) return true;
-      return tokenGroups.every((group) => group.some((token) => haystack.includes(token)));
-    });
-  }, [opinionArticles, searchQuery]);
-
   const { arabic, french } = useMemo(() => {
     const ar = searchedArticles.filter((a) => a.locale === "ar").sort(byArticleDateDesc);
     const fr = searchedArticles.filter((a) => a.locale === "fr").sort(byArticleDateDesc);
@@ -550,10 +503,10 @@ export function HomeClient() {
   const selectedArticle = useMemo(() => {
     if (!selectedId) return null;
     if (viewMode === "opinions") {
-      return searchedOpinions.find((a) => a.id === selectedId) ?? null;
+      return opinionFeedArticles.find((a) => a.id === selectedId) ?? null;
     }
     return filteredArticles.find((a) => a.id === selectedId) ?? null;
-  }, [selectedId, viewMode, filteredArticles, searchedOpinions]);
+  }, [selectedId, viewMode, filteredArticles, opinionFeedArticles]);
 
   useEffect(() => {
     if (viewMode !== "news") return;
@@ -564,13 +517,29 @@ export function HomeClient() {
 
   useEffect(() => {
     if (viewMode !== "opinions") return;
-    if (selectedId && !searchedOpinions.some((a) => a.id === selectedId)) {
+    if (selectedId && !opinionFeedArticles.some((a) => a.id === selectedId)) {
       setSelectedId(null);
     }
-  }, [viewMode, searchedOpinions, selectedId]);
+  }, [viewMode, opinionFeedArticles, selectedId]);
 
   const selectArticle = useCallback((article: NewsArticle) => {
     setSelectedId(article.id);
+  }, []);
+
+  const onOpinionFeedChange = useCallback((articles: NewsArticle[]) => {
+    setOpinionFeedArticles(articles);
+  }, []);
+
+  const onOpinionBusy = useCallback((busy: boolean) => {
+    setOpinionsLoading(busy);
+  }, []);
+
+  const onOpinionErr = useCallback((msg: string | null) => {
+    setOpinionsErr(msg);
+  }, []);
+
+  const bumpOpinionsReload = useCallback(() => {
+    setOpinionsReloadKey((k) => k + 1);
   }, []);
 
   const openShareForSelection = useCallback(() => {
@@ -625,34 +594,6 @@ export function HomeClient() {
     },
     [theme],
   );
-
-  const submitOpinion = useCallback(async () => {
-    if (opinionPosting) return;
-    setOpinionDoneNote(null);
-    setOpinionsErr(null);
-    setOpinionPosting(true);
-    try {
-      const res = await fetch("/api/opinions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country, body: opinionBody, author: opinionAuthor }),
-      });
-      const json = (await res.json()) as { error?: string; detail?: string };
-      if (!res.ok) {
-        const parts = [json.error, json.detail].filter(Boolean);
-        throw new Error(parts.length ? parts.join(" — ") : `HTTP ${res.status}`);
-      }
-      setOpinionBody("");
-      setOpinionAuthor("");
-      setOpinionDoneNote(t.opinionPosted);
-      window.setTimeout(() => setOpinionDoneNote(null), 3200);
-      await loadOpinions();
-    } catch (e) {
-      setOpinionsErr(e instanceof Error ? e.message : "Post failed");
-    } finally {
-      setOpinionPosting(false);
-    }
-  }, [opinionPosting, country, opinionBody, opinionAuthor, loadOpinions, t.opinionPosted]);
 
   return (
     <main
@@ -728,7 +669,7 @@ export function HomeClient() {
                 return;
               }
               if (viewMode === "opinions") {
-                void loadOpinions();
+                bumpOpinionsReload();
                 return;
               }
               void load();
@@ -760,7 +701,7 @@ export function HomeClient() {
               type="button"
               onClick={() => {
                 setViewMode("opinions");
-                void loadOpinions();
+                bumpOpinionsReload();
               }}
               className={`min-h-9 flex-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition sm:min-h-0 sm:flex-none sm:px-2 sm:py-1 sm:text-[10px] ${
                 viewMode === "opinions" ? "bg-violet-600 text-white" : "text-slate-300 hover:bg-white/10"
@@ -857,62 +798,19 @@ export function HomeClient() {
                 </div>
               </>
             ) : (
-              <>
-                <div className="theme-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-                  <h2 className="theme-headline text-2xl font-bold text-white">{t.opinionsTitle}</h2>
-                  <p className="theme-muted mt-2 text-sm leading-relaxed">{t.opinionsComposerHint}</p>
-                  {opinionDoneNote ? (
-                    <p className="mt-3 text-sm font-medium text-emerald-300">{opinionDoneNote}</p>
-                  ) : null}
-                  <textarea
-                    value={opinionBody}
-                    onChange={(e) => setOpinionBody(e.target.value)}
-                    rows={5}
-                    placeholder={t.opinionsPlaceholder}
-                    maxLength={2000}
-                    className="theme-input mt-4 w-full rounded-lg border border-white/25 bg-black/25 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-400/50"
-                    aria-label={t.opinionsPlaceholder}
-                  />
-                  <input
-                    type="text"
-                    value={opinionAuthor}
-                    onChange={(e) => setOpinionAuthor(e.target.value)}
-                    maxLength={48}
-                    placeholder={t.opinionsAuthorPlaceholder}
-                    className="theme-input mt-3 w-full rounded-lg border border-white/25 bg-black/25 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-400/50"
-                    aria-label={t.opinionsAuthorPlaceholder}
-                  />
-                  <button
-                    type="button"
-                    disabled={opinionPosting || opinionBody.trim().length < 8}
-                    onClick={() => void submitOpinion()}
-                    className="mt-4 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:brightness-110 disabled:opacity-50"
-                  >
-                    {opinionPosting ? t.opinionsPosting : t.opinionsSubmit}
-                  </button>
-                </div>
-                <div
-                  dir={uiLang === "ar" ? "rtl" : "ltr"}
-                  lang={uiLang === "ar" ? "ar" : uiLang === "fr" ? "fr" : "en"}
-                >
-                  <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {searchedOpinions.map((a) => (
-                      <li key={a.id}>
-                        <ArticleCard
-                          article={a}
-                          onSelect={() => selectArticle(a)}
-                          active={selectedId === a.id}
-                          onShareDoubleClick={() => openShareFromDoubleClick(a)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                  {searchedOpinions.length === 0 && !opinionsLoading && (
-                    <p className="theme-muted mt-2 text-slate-500">{t.opinionsEmpty}</p>
-                  )}
-                  {opinionsLoading ? <p className="theme-muted mt-2 text-sm">…</p> : null}
-                </div>
-              </>
+              <PublicOpinionsPanel
+                country={country}
+                uiLang={uiLang}
+                searchQuery={searchQuery}
+                labels={opinionsLabels}
+                selectedId={selectedId}
+                onSelectArticle={selectArticle}
+                onShareDoubleClick={openShareFromDoubleClick}
+                onFeedArticlesChange={onOpinionFeedChange}
+                onBusyChange={onOpinionBusy}
+                onErrorChange={onOpinionErr}
+                reloadKey={opinionsReloadKey}
+              />
             )}
         </div>
 

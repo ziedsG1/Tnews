@@ -1,0 +1,326 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { NewsArticle } from "@/lib/aggregateNews";
+import type { CountryId } from "@/lib/countries";
+import type { UiLang } from "@/lib/countries";
+import { ArticleCard } from "@/components/ArticleCard";
+import { createClient } from "@/lib/supabase/client";
+import type { OpinionDbRow } from "@/lib/publicOpinions";
+import { opinionToArticle, storedOpinionFromDbRow } from "@/lib/publicOpinions";
+
+export type PublicOpinionsLabels = {
+  opinionsTitle: string;
+  opinionsComposerHint: string;
+  opinionsPlaceholder: string;
+  opinionsSubmit: string;
+  opinionsPosting: string;
+  opinionsEmpty: string;
+  opinionPosted: string;
+  opinionsAuthTitle: string;
+  opinionsAuthHint: string;
+  opinionsEmailPlaceholder: string;
+  opinionsSendMagicLink: string;
+  opinionsCheckEmail: string;
+  opinionsSignOut: string;
+  opinionsMyProfile: string;
+  opinionsConfigureSupabase: string;
+};
+
+function opinionMatchesQuery(a: NewsArticle, q: string): boolean {
+  const raw = q.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!raw) return true;
+  const hay = `${a.translatedTitle ?? ""} ${a.summary ?? ""} ${a.sourceLabel} ${a.topic}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return raw.split(/\s+/).every((w) => w.length > 0 && hay.includes(w));
+}
+
+export function PublicOpinionsPanel({
+  country,
+  uiLang,
+  searchQuery,
+  labels,
+  selectedId,
+  onSelectArticle,
+  onShareDoubleClick,
+  onFeedArticlesChange,
+  onBusyChange,
+  onErrorChange,
+  reloadKey,
+}: {
+  country: CountryId;
+  uiLang: UiLang;
+  searchQuery: string;
+  labels: PublicOpinionsLabels;
+  selectedId: string | null;
+  onSelectArticle: (a: NewsArticle) => void;
+  onShareDoubleClick: (a: NewsArticle) => void;
+  onFeedArticlesChange: (articles: NewsArticle[]) => void;
+  onBusyChange: (busy: boolean) => void;
+  onErrorChange: (msg: string | null) => void;
+  reloadKey: number;
+}) {
+  const supabaseConfigured =
+    typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
+    typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
+
+  const supabase = useMemo(() => {
+    if (!supabaseConfigured) return null;
+    return createClient();
+  }, [supabaseConfigured]);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [emailInput, setEmailInput] = useState("");
+  const [magicSent, setMagicSent] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [rows, setRows] = useState<OpinionDbRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [opinionBody, setOpinionBody] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [doneNote, setDoneNote] = useState<string | null>(null);
+
+  const siteOrigin = useMemo(() => (typeof window !== "undefined" ? window.location.origin : ""), []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => {
+      setSessionEmail(data.session?.user.email ?? null);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_e, session) => {
+      setSessionEmail(session?.user.email ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  const loadList = useCallback(async () => {
+    if (!supabaseConfigured) return;
+    setLoading(true);
+    onBusyChange(true);
+    onErrorChange(null);
+    try {
+      const res = await fetch(`/api/opinions?country=${encodeURIComponent(country)}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const json = (await res.json()) as { opinions?: OpinionDbRow[]; error?: string };
+      if (res.status === 401) {
+        setRows([]);
+        onFeedArticlesChange([]);
+        return;
+      }
+      if (!res.ok) {
+        onErrorChange(json.error || `HTTP ${res.status}`);
+        setRows([]);
+        onFeedArticlesChange([]);
+        return;
+      }
+      setRows(Array.isArray(json.opinions) ? json.opinions : []);
+    } catch (e) {
+      onErrorChange(e instanceof Error ? e.message : "Load failed");
+      setRows([]);
+      onFeedArticlesChange([]);
+    } finally {
+      setLoading(false);
+      onBusyChange(false);
+    }
+  }, [country, onBusyChange, onErrorChange, onFeedArticlesChange, supabaseConfigured]);
+
+  useEffect(() => {
+    if (!sessionEmail || !supabaseConfigured) {
+      setRows([]);
+      return;
+    }
+    void loadList();
+  }, [sessionEmail, country, reloadKey, loadList, supabaseConfigured]);
+
+  const articles = useMemo(() => {
+    const list: NewsArticle[] = [];
+    for (const r of rows) {
+      const s = storedOpinionFromDbRow(r);
+      if (s) list.push(opinionToArticle(s, uiLang, siteOrigin));
+    }
+    return list;
+  }, [rows, uiLang, siteOrigin]);
+
+  const filtered = useMemo(
+    () => articles.filter((a) => opinionMatchesQuery(a, searchQuery)),
+    [articles, searchQuery],
+  );
+
+  useEffect(() => {
+    if (!sessionEmail || !supabaseConfigured) {
+      onFeedArticlesChange([]);
+      return;
+    }
+    onFeedArticlesChange(filtered);
+  }, [sessionEmail, supabaseConfigured, filtered, onFeedArticlesChange]);
+
+  const sendMagicLink = useCallback(async () => {
+    if (!supabase || !emailInput.trim()) return;
+    setAuthBusy(true);
+    setMagicSent(false);
+    try {
+      const u = new URL(window.location.href);
+      const innerNext = u.searchParams.get("next");
+      const fallback = `${u.pathname}${u.search}`;
+      const nextPath =
+        innerNext && innerNext.startsWith("/") && !innerNext.startsWith("//") ? innerNext : fallback;
+      const redirect = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+      const { error } = await supabase.auth.signInWithOtp({
+        email: emailInput.trim(),
+        options: { emailRedirectTo: redirect },
+      });
+      if (error) throw error;
+      setMagicSent(true);
+    } catch (e) {
+      onErrorChange(e instanceof Error ? e.message : "Auth failed");
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [supabase, emailInput, onErrorChange]);
+
+  const signOut = useCallback(async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setRows([]);
+    onFeedArticlesChange([]);
+    setMagicSent(false);
+  }, [supabase, onFeedArticlesChange]);
+
+  const submitOpinion = useCallback(async () => {
+    if (posting || opinionBody.trim().length < 8) return;
+    setPosting(true);
+    onErrorChange(null);
+    setDoneNote(null);
+    try {
+      const res = await fetch("/api/opinions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ country, body: opinionBody }),
+      });
+      const json = (await res.json()) as { error?: string; detail?: string };
+      if (!res.ok) {
+        const parts = [json.error, json.detail].filter(Boolean);
+        throw new Error(parts.length ? parts.join(" — ") : `HTTP ${res.status}`);
+      }
+      setOpinionBody("");
+      setDoneNote(labels.opinionPosted);
+      window.setTimeout(() => setDoneNote(null), 3200);
+      await loadList();
+    } catch (e) {
+      onErrorChange(e instanceof Error ? e.message : "Post failed");
+    } finally {
+      setPosting(false);
+    }
+  }, [posting, opinionBody, country, loadList, labels.opinionPosted, onErrorChange]);
+
+  if (!supabaseConfigured) {
+    return (
+      <div className="theme-panel rounded-2xl border border-amber-500/30 bg-amber-950/20 p-5 text-amber-100">
+        <p className="text-sm font-medium">{labels.opinionsConfigureSupabase}</p>
+      </div>
+    );
+  }
+
+  if (!sessionEmail) {
+    return (
+      <div className="theme-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <h2 className="theme-headline text-2xl font-bold text-white">{labels.opinionsAuthTitle}</h2>
+        <p className="theme-muted mt-2 text-sm leading-relaxed">{labels.opinionsAuthHint}</p>
+        <label className="mt-4 block">
+          <span className="theme-muted text-xs">{labels.opinionsEmailPlaceholder}</span>
+          <input
+            type="email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            placeholder={labels.opinionsEmailPlaceholder}
+            className="theme-input mt-1 w-full rounded-lg border border-white/25 bg-black/25 px-3 py-2 text-sm text-slate-100 outline-none focus:border-violet-400/50"
+            autoComplete="email"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={authBusy || !emailInput.includes("@")}
+          onClick={() => void sendMagicLink()}
+          className="mt-4 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:brightness-110 disabled:opacity-50"
+        >
+          {authBusy ? "…" : labels.opinionsSendMagicLink}
+        </button>
+        {magicSent ? <p className="mt-3 text-sm text-emerald-300">{labels.opinionsCheckEmail}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="theme-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="theme-headline text-2xl font-bold text-white">{labels.opinionsTitle}</h2>
+            <p className="theme-muted mt-1 text-xs text-slate-400">{sessionEmail}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/profile"
+              className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
+            >
+              {labels.opinionsMyProfile}
+            </Link>
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:bg-white/10"
+            >
+              {labels.opinionsSignOut}
+            </button>
+          </div>
+        </div>
+        <p className="theme-muted mt-3 text-sm leading-relaxed">{labels.opinionsComposerHint}</p>
+        {doneNote ? <p className="mt-2 text-sm font-medium text-emerald-300">{doneNote}</p> : null}
+        <textarea
+          value={opinionBody}
+          onChange={(e) => setOpinionBody(e.target.value)}
+          rows={5}
+          placeholder={labels.opinionsPlaceholder}
+          maxLength={2000}
+          className="theme-input mt-4 w-full rounded-lg border border-white/25 bg-black/25 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-400/50"
+          aria-label={labels.opinionsPlaceholder}
+        />
+        <button
+          type="button"
+          disabled={posting || opinionBody.trim().length < 8}
+          onClick={() => void submitOpinion()}
+          className="mt-4 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:brightness-110 disabled:opacity-50"
+        >
+          {posting ? labels.opinionsPosting : labels.opinionsSubmit}
+        </button>
+      </div>
+      <div
+        dir={uiLang === "ar" ? "rtl" : "ltr"}
+        lang={uiLang === "ar" ? "ar" : uiLang === "fr" ? "fr" : "en"}
+      >
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((a) => (
+            <li key={a.id}>
+              <ArticleCard
+                article={a}
+                active={selectedId === a.id}
+                onSelect={() => onSelectArticle(a)}
+                onShareDoubleClick={() => onShareDoubleClick(a)}
+              />
+            </li>
+          ))}
+        </ul>
+        {filtered.length === 0 && !loading && <p className="theme-muted mt-2 text-slate-500">{labels.opinionsEmpty}</p>}
+        {loading ? <p className="theme-muted mt-2 text-sm">…</p> : null}
+      </div>
+    </>
+  );
+}

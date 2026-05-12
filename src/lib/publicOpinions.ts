@@ -8,6 +8,16 @@ export type StoredOpinion = {
   body: string;
   author: string;
   createdAt: string;
+  username: string;
+};
+
+/** Row shape returned by PostgREST for `public_opinions` + embedded `profiles`. */
+export type OpinionDbRow = {
+  id: string;
+  country_id: string;
+  body: string;
+  created_at: string;
+  profiles: { username: string; display_name: string | null } | { username: string; display_name: string | null }[] | null;
 };
 
 const PUBLIC_TOPIC: Record<UiLang, string> = {
@@ -22,6 +32,21 @@ const ANON: Record<UiLang, string> = {
   en: "Anonymous",
 };
 
+export function storedOpinionFromDbRow(row: OpinionDbRow): StoredOpinion | null {
+  const p = row.profiles;
+  const profile = Array.isArray(p) ? p[0] : p;
+  if (!profile?.username) return null;
+  const author = (profile.display_name?.trim() || profile.username).trim();
+  return {
+    id: row.id,
+    countryId: row.country_id as CountryId,
+    body: row.body,
+    author,
+    createdAt: row.created_at,
+    username: profile.username,
+  };
+}
+
 /** Map a stored row to the same card shape as RSS articles (sidebar + share). */
 export function opinionToArticle(row: StoredOpinion, uiLang: UiLang, siteOrigin: string): NewsArticle {
   const locale: "ar" | "fr" = uiLang === "ar" ? "ar" : "fr";
@@ -29,8 +54,9 @@ export function opinionToArticle(row: StoredOpinion, uiLang: UiLang, siteOrigin:
   const headline = trimmed.length > 200 ? `${trimmed.slice(0, 199).trimEnd()}…` : trimmed;
   const author = row.author.trim();
   const origin = siteOrigin.replace(/\/$/, "") || "";
+  const profilePath = `/u/${encodeURIComponent(row.username)}`;
   const hash = `op-${encodeURIComponent(row.id)}`;
-  const link = origin ? `${origin}/#${hash}` : `#${hash}`;
+  const link = origin ? `${origin}${profilePath}#${hash}` : `${profilePath}#${hash}`;
   const sourceLabel = author || ANON[uiLang];
 
   return {
