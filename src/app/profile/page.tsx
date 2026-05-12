@@ -56,7 +56,7 @@ export default async function ProfilePage() {
 
   const { data: opinionRows } = await supabase
     .from("public_opinions")
-    .select("id, country_id, body, created_at")
+    .select("id, user_id, country_id, body, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -81,7 +81,7 @@ export default async function ProfilePage() {
 
       <h2 className="mt-10 text-lg font-semibold text-white">My opinions</h2>
       <div className="mt-4">
-        <ProfileOpinionCards articles={articles} />
+        <ProfileOpinionCards articles={articles} showDelete />
       </div>
     </main>
   );

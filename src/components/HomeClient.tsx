@@ -339,8 +339,7 @@ export function HomeClient() {
         opinionPosted: "تم نشر الرأي.",
         opinionsSidebarNote: "هذا منشور من القارئ في قسم «رأي العام» وليس من أسلاك الأخبار.",
         opinionsAuthTitle: "تسجيل الدخول — رأي العام",
-        opinionsAuthHint:
-          "أول مرة يُنشأ الحساب على الخادم دون بريد. لاحقاً نفس الاسم وكلمة المرور. يجب إضافة SUPABASE_SERVICE_ROLE_KEY في بيئة الخادم (لوحة Supabase → API).",
+        opinionsAuthHint: "أول مرة يُنشأ حسابك. لاحقاً نفس اسم المستخدم وكلمة المرور.",
         opinionsUsernamePlaceholder: "اسم المستخدم",
         opinionsPasswordPlaceholder: "كلمة المرور",
         opinionsAuthButton: "دخول أو إنشاء حساب",
@@ -350,8 +349,9 @@ export function HomeClient() {
           "أضف SUPABASE_SERVICE_ROLE_KEY في ملف البيئة على الخادم فقط (لوحة Supabase → Project Settings → API). لا تضعها في NEXT_PUBLIC_.",
         opinionsSignOut: "خروج",
         opinionsMyProfile: "ملفي",
+        opinionsDelete: "حذف الرأي",
         opinionsConfigureSupabase:
-          "لم يُضبط Supabase: أضف NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY، و SUPABASE_SERVICE_ROLE_KEY للخادم، وطبّق SQL من supabase/migrations.",
+          "لم يُضبط Supabase: أضف NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY، و SUPABASE_SERVICE_ROLE_KEY للخادم، وطبّق SQL من supabase/migrations (001 ثم 002).",
         weatherWind: "الرياح",
         weatherToday: "اليوم",
         weatherUnavailable: "بيانات الطقس غير متوفرة حاليا.",
@@ -384,8 +384,7 @@ export function HomeClient() {
         opinionPosted: "Avis publié.",
         opinionsSidebarNote: "Texte publié par un lecteur dans « Opinion publique », pas un fil de presse.",
         opinionsAuthTitle: "Connexion — Opinion publique",
-        opinionsAuthHint:
-          "Première visite : le compte est créé sur le serveur sans e-mail. Ensuite, même identifiant et mot de passe. Ajoutez SUPABASE_SERVICE_ROLE_KEY côté serveur (Dashboard → API).",
+        opinionsAuthHint: "La première fois, un compte est créé. Ensuite, même identifiant et mot de passe.",
         opinionsUsernamePlaceholder: "Identifiant",
         opinionsPasswordPlaceholder: "Mot de passe",
         opinionsAuthButton: "Connexion ou création",
@@ -396,8 +395,9 @@ export function HomeClient() {
           "Ajoutez SUPABASE_SERVICE_ROLE_KEY dans l’environnement serveur uniquement (Supabase → Project Settings → API). Ne la préfixez pas par NEXT_PUBLIC_.",
         opinionsSignOut: "Déconnexion",
         opinionsMyProfile: "Mon profil",
+        opinionsDelete: "Supprimer l’avis",
         opinionsConfigureSupabase:
-          "Supabase non configuré : NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (serveur), puis SQL dans supabase/migrations.",
+          "Supabase non configuré : NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (serveur), puis SQL 001 et 002 dans supabase/migrations.",
         weatherWind: "Vent",
         weatherToday: "Aujourd'hui",
         weatherUnavailable: "Météo indisponible pour le moment.",
@@ -430,8 +430,7 @@ export function HomeClient() {
         opinionPosted: "Posted.",
         opinionsSidebarNote: "Reader post in “Public opinion”, not a news wire.",
         opinionsAuthTitle: "Sign in — Public opinion",
-        opinionsAuthHint:
-          "First visit creates your account on the server with no email. After that, same username and password. Add SUPABASE_SERVICE_ROLE_KEY to server env (Dashboard → API).",
+        opinionsAuthHint: "First visit creates your account. Same username and password next time.",
         opinionsUsernamePlaceholder: "Username",
         opinionsPasswordPlaceholder: "Password",
         opinionsAuthButton: "Sign in or create account",
@@ -441,8 +440,9 @@ export function HomeClient() {
           "Add SUPABASE_SERVICE_ROLE_KEY to server-only env (Supabase → Project Settings → API → service_role). Never use NEXT_PUBLIC_ for this key.",
         opinionsSignOut: "Sign out",
         opinionsMyProfile: "My profile",
+        opinionsDelete: "Delete opinion",
         opinionsConfigureSupabase:
-          "Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (server), then run SQL in supabase/migrations.",
+          "Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (server), then run SQL migrations 001 and 002 in supabase/migrations.",
         weatherWind: "Wind",
         weatherToday: "Today",
         weatherUnavailable: "Weather is unavailable right now.",
@@ -479,6 +479,7 @@ export function HomeClient() {
       opinionsServiceRoleMissing: t.opinionsServiceRoleMissing,
       opinionsSignOut: t.opinionsSignOut,
       opinionsMyProfile: t.opinionsMyProfile,
+      opinionsDelete: t.opinionsDelete,
       opinionsConfigureSupabase: t.opinionsConfigureSupabase,
     }),
     [t],
@@ -826,6 +827,7 @@ export function HomeClient() {
                 onBusyChange={onOpinionBusy}
                 onErrorChange={onOpinionErr}
                 reloadKey={opinionsReloadKey}
+                onClearSelection={() => setSelectedId(null)}
               />
             )}
         </div>

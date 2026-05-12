@@ -37,7 +37,7 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from("public_opinions")
-      .select("id, country_id, body, created_at, profiles(username, display_name)")
+      .select("id, user_id, country_id, body, created_at, profiles(username, display_name)")
       .eq("country_id", country.id)
       .order("created_at", { ascending: false })
       .limit(200);
@@ -103,5 +103,43 @@ export async function POST(req: Request) {
     console.error("opinions POST", e);
     const detail = process.env.NODE_ENV === "development" ? (e instanceof Error ? e.message : String(e)) : undefined;
     return NextResponse.json({ error: "Could not save opinion.", detail }, { status: 500 });
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export async function DELETE(req: Request) {
+  if (!supabaseConfigured()) {
+    return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
+  }
+
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id")?.trim() ?? "";
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: "Invalid opinion id." }, { status: 400 });
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+
+    const { data, error } = await supabase.from("public_opinions").delete().eq("id", id).select("id");
+    if (error) {
+      console.error("opinions DELETE", error);
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (!data?.length) {
+      return NextResponse.json({ error: "Not found or not allowed." }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("opinions DELETE", e);
+    const detail = process.env.NODE_ENV === "development" ? (e instanceof Error ? e.message : String(e)) : undefined;
+    return NextResponse.json({ error: "Could not delete opinion.", detail }, { status: 500 });
   }
 }

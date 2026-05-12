@@ -5,6 +5,7 @@ import { opinionToArticle, storedOpinionFromDbRow } from "@/lib/publicOpinions";
 
 export type OpinionRowCore = {
   id: string;
+  user_id: string;
   country_id: string;
   body: string;
   created_at: string;

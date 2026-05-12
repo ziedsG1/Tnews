@@ -9,7 +9,7 @@ import { ArticleCard } from "@/components/ArticleCard";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { OpinionDbRow } from "@/lib/publicOpinions";
-import { opinionToArticle, storedOpinionFromDbRow } from "@/lib/publicOpinions";
+import { opinionToArticle, opinionUuidFromArticleId, storedOpinionFromDbRow } from "@/lib/publicOpinions";
 import { authEmailToDisplayLogin, normalizeUsername, usernameToAuthEmail } from "@/lib/syntheticAuthEmail";
 
 export type PublicOpinionsLabels = {
@@ -31,6 +31,7 @@ export type PublicOpinionsLabels = {
   opinionsSignOut: string;
   opinionsMyProfile: string;
   opinionsConfigureSupabase: string;
+  opinionsDelete: string;
 };
 
 function opinionMatchesQuery(a: NewsArticle, q: string): boolean {
@@ -55,6 +56,7 @@ export function PublicOpinionsPanel({
   onBusyChange,
   onErrorChange,
   reloadKey,
+  onClearSelection,
 }: {
   country: CountryId;
   uiLang: UiLang;
@@ -67,6 +69,7 @@ export function PublicOpinionsPanel({
   onBusyChange: (busy: boolean) => void;
   onErrorChange: (msg: string | null) => void;
   reloadKey: number;
+  onClearSelection?: () => void;
 }) {
   const supabaseConfigured =
     typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
@@ -87,6 +90,7 @@ export function PublicOpinionsPanel({
   const [opinionBody, setOpinionBody] = useState("");
   const [posting, setPosting] = useState(false);
   const [doneNote, setDoneNote] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const siteOrigin = useMemo(() => (typeof window !== "undefined" ? window.location.origin : ""), []);
 
@@ -144,19 +148,19 @@ export function PublicOpinionsPanel({
     void loadList();
   }, [sessionUser, country, reloadKey, loadList, supabaseConfigured]);
 
-  const articles = useMemo(() => {
-    const list: NewsArticle[] = [];
+  const filteredRows = useMemo(() => {
+    const list: { article: NewsArticle; row: OpinionDbRow }[] = [];
     for (const r of rows) {
       const s = storedOpinionFromDbRow(r);
-      if (s) list.push(opinionToArticle(s, uiLang, siteOrigin));
+      if (!s) continue;
+      const a = opinionToArticle(s, uiLang, siteOrigin);
+      if (!opinionMatchesQuery(a, searchQuery)) continue;
+      list.push({ article: a, row: r });
     }
     return list;
-  }, [rows, uiLang, siteOrigin]);
+  }, [rows, uiLang, siteOrigin, searchQuery]);
 
-  const filtered = useMemo(
-    () => articles.filter((a) => opinionMatchesQuery(a, searchQuery)),
-    [articles, searchQuery],
-  );
+  const filtered = useMemo(() => filteredRows.map((x) => x.article), [filteredRows]);
 
   useEffect(() => {
     if (!sessionUser || !supabaseConfigured) {
@@ -233,6 +237,33 @@ export function PublicOpinionsPanel({
     setUsernameInput("");
     setPasswordInput("");
   }, [supabase, onFeedArticlesChange]);
+
+  const deleteOpinion = useCallback(
+    async (article: NewsArticle) => {
+      const uuid = opinionUuidFromArticleId(article.id);
+      if (!uuid) return;
+      setDeletingId(article.id);
+      onErrorChange(null);
+      try {
+        const res = await fetch(`/api/opinions?id=${encodeURIComponent(uuid)}`, {
+          method: "DELETE",
+          credentials: "same-origin",
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) {
+          onErrorChange(json.error || `HTTP ${res.status}`);
+          return;
+        }
+        if (selectedId === article.id) onClearSelection?.();
+        await loadList();
+      } catch (e) {
+        onErrorChange(e instanceof Error ? e.message : "Delete failed");
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [loadList, onClearSelection, onErrorChange, selectedId],
+  );
 
   const submitOpinion = useCallback(async () => {
     if (posting || opinionBody.trim().length < 8) return;
@@ -363,18 +394,37 @@ export function PublicOpinionsPanel({
         lang={uiLang === "ar" ? "ar" : uiLang === "fr" ? "fr" : "en"}
       >
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((a) => (
-            <li key={a.id}>
-              <ArticleCard
-                article={a}
-                active={selectedId === a.id}
-                onSelect={() => onSelectArticle(a)}
-                onShareDoubleClick={() => onShareDoubleClick(a)}
-              />
-            </li>
-          ))}
+          {filteredRows.map(({ article: a, row }) => {
+            const own = sessionUser.id === row.user_id;
+            return (
+              <li key={a.id} className="relative">
+                {own ? (
+                  <button
+                    type="button"
+                    title={labels.opinionsDelete}
+                    aria-label={labels.opinionsDelete}
+                    disabled={deletingId === a.id}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void deleteOpinion(a);
+                    }}
+                    className="absolute end-2 top-2 z-10 rounded-md border border-red-500/40 bg-red-950/80 px-2 py-0.5 text-xs font-semibold text-red-100 hover:bg-red-900/90 disabled:opacity-40"
+                  >
+                    {deletingId === a.id ? "…" : "×"}
+                  </button>
+                ) : null}
+                <ArticleCard
+                  article={a}
+                  active={selectedId === a.id}
+                  onSelect={() => onSelectArticle(a)}
+                  onShareDoubleClick={() => onShareDoubleClick(a)}
+                />
+              </li>
+            );
+          })}
         </ul>
-        {filtered.length === 0 && !loading && <p className="theme-muted mt-2 text-slate-500">{labels.opinionsEmpty}</p>}
+        {filteredRows.length === 0 && !loading && <p className="theme-muted mt-2 text-slate-500">{labels.opinionsEmpty}</p>}
         {loading ? <p className="theme-muted mt-2 text-sm">…</p> : null}
       </div>
     </>

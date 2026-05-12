@@ -14,6 +14,7 @@ export type StoredOpinion = {
 /** Row shape returned by PostgREST for `public_opinions` + embedded `profiles`. */
 export type OpinionDbRow = {
   id: string;
+  user_id: string;
   country_id: string;
   body: string;
   created_at: string;
@@ -75,4 +76,16 @@ export function opinionToArticle(row: StoredOpinion, uiLang: UiLang, siteOrigin:
     sourceKind: "opinion",
     imageUrl: null,
   };
+}
+
+/** Extract Postgres UUID from synthetic article id `op:<uuid>`. */
+export function opinionUuidFromArticleId(articleId: string): string | null {
+  if (!articleId.startsWith("op:")) return null;
+  const rest = articleId.slice(3);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rest)
+  ) {
+    return null;
+  }
+  return rest;
 }

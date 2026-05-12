@@ -61,7 +61,7 @@ export default async function UserPublicProfilePage({ params }: Props) {
 
   const { data: opinionRows } = await supabase
     .from("public_opinions")
-    .select("id, country_id, body, created_at")
+    .select("id, user_id, country_id, body, created_at")
     .eq("user_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -87,7 +87,10 @@ export default async function UserPublicProfilePage({ params }: Props) {
       <h2 className="mt-8 text-lg font-semibold text-white">Public opinions</h2>
       <p className="theme-muted mt-1 text-xs text-slate-500">Only signed-in members can open this feed.</p>
       <div className="mt-4">
-        <ProfileOpinionCards articles={articles} />
+        <ProfileOpinionCards
+          articles={articles}
+          showDelete={user.id === profile.id}
+        />
       </div>
     </main>
   );
