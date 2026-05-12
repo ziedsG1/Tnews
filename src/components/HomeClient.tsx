@@ -300,7 +300,7 @@ export function HomeClient() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  /** After magic link, send user to `?next=/path` if they are already signed in. */
+  /** After sign-in, send user to `?next=/path` if they are already signed in. */
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
@@ -331,7 +331,7 @@ export function HomeClient() {
         opinionsTitle: `رأي العام — ${activeCountry.names.ar}`,
         opinionsSearchHint: "ابحث في الآراء المنشورة.",
         opinionsComposerHint:
-          "سجّل الدخول بالبريد. تظهر آراء المسجّلين فقط في هذا القسم حسب الدولة. المحتوى مسؤولية صاحبه.",
+          "مساحة للمسجّلين فقط حسب الدولة. سجّل الدخول باسم مستخدم وكلمة مرور (بدون بريد).",
         opinionsPlaceholder: "اكتب رأيك هنا…",
         opinionsSubmit: "نشر الرأي",
         opinionsPosting: "جاري النشر…",
@@ -340,14 +340,18 @@ export function HomeClient() {
         opinionsSidebarNote: "هذا منشور من القارئ في قسم «رأي العام» وليس من أسلاك الأخبار.",
         opinionsAuthTitle: "تسجيل الدخول — رأي العام",
         opinionsAuthHint:
-          "أدخل بريدك الإلكتروني لإرسال رابط تسجيل دخول لمرة واحدة. بعد الدخول يمكنك قراءة آراء المسجّلين ونشر رأيك.",
-        opinionsEmailPlaceholder: "البريد الإلكتروني",
-        opinionsSendMagicLink: "إرسال الرابط",
-        opinionsCheckEmail: "تحقق من بريدك واضغط الرابط للدخول.",
+          "أول مرة يُنشأ الحساب على الخادم دون بريد. لاحقاً نفس الاسم وكلمة المرور. يجب إضافة SUPABASE_SERVICE_ROLE_KEY في بيئة الخادم (لوحة Supabase → API).",
+        opinionsUsernamePlaceholder: "اسم المستخدم",
+        opinionsPasswordPlaceholder: "كلمة المرور",
+        opinionsAuthButton: "دخول أو إنشاء حساب",
+        opinionsUsernameRules: "اسم مستخدم 3–28 حرفاً (a-z و 0-9 و _) وكلمة مرور 6 أحرف على الأقل.",
+        opinionsWrongPassword: "اسم المستخدم أو كلمة المرور غير صحيحة.",
+        opinionsServiceRoleMissing:
+          "أضف SUPABASE_SERVICE_ROLE_KEY في ملف البيئة على الخادم فقط (لوحة Supabase → Project Settings → API). لا تضعها في NEXT_PUBLIC_.",
         opinionsSignOut: "خروج",
         opinionsMyProfile: "ملفي",
         opinionsConfigureSupabase:
-          "لم يُضبط Supabase: أضف NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY في البيئة، وطبّق SQL من مجلد supabase/migrations في لوحة Supabase.",
+          "لم يُضبط Supabase: أضف NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY، و SUPABASE_SERVICE_ROLE_KEY للخادم، وطبّق SQL من supabase/migrations.",
         weatherWind: "الرياح",
         weatherToday: "اليوم",
         weatherUnavailable: "بيانات الطقس غير متوفرة حاليا.",
@@ -372,7 +376,7 @@ export function HomeClient() {
         opinionsTitle: `Opinion publique — ${activeCountry.names.fr}`,
         opinionsSearchHint: "Rechercher parmi les avis publiés.",
         opinionsComposerHint:
-          "Connectez-vous par e-mail. Seuls les avis des personnes inscrites apparaissent ici, par pays. Le contenu engage son auteur.",
+          "Espace réservé aux comptes inscrits, par pays. Connexion avec identifiant et mot de passe (sans e-mail).",
         opinionsPlaceholder: "Votre avis…",
         opinionsSubmit: "Publier",
         opinionsPosting: "Publication…",
@@ -381,14 +385,19 @@ export function HomeClient() {
         opinionsSidebarNote: "Texte publié par un lecteur dans « Opinion publique », pas un fil de presse.",
         opinionsAuthTitle: "Connexion — Opinion publique",
         opinionsAuthHint:
-          "Entrez votre e-mail pour recevoir un lien de connexion (magic link). Ensuite vous lisez les avis inscrits et vous publiez le vôtre.",
-        opinionsEmailPlaceholder: "E-mail",
-        opinionsSendMagicLink: "Envoyer le lien",
-        opinionsCheckEmail: "Vérifiez votre boîte mail et cliquez sur le lien.",
+          "Première visite : le compte est créé sur le serveur sans e-mail. Ensuite, même identifiant et mot de passe. Ajoutez SUPABASE_SERVICE_ROLE_KEY côté serveur (Dashboard → API).",
+        opinionsUsernamePlaceholder: "Identifiant",
+        opinionsPasswordPlaceholder: "Mot de passe",
+        opinionsAuthButton: "Connexion ou création",
+        opinionsUsernameRules:
+          "Identifiant 3–28 caractères (a-z, 0-9, _) et mot de passe d’au moins 6 caractères.",
+        opinionsWrongPassword: "Identifiant ou mot de passe incorrect.",
+        opinionsServiceRoleMissing:
+          "Ajoutez SUPABASE_SERVICE_ROLE_KEY dans l’environnement serveur uniquement (Supabase → Project Settings → API). Ne la préfixez pas par NEXT_PUBLIC_.",
         opinionsSignOut: "Déconnexion",
         opinionsMyProfile: "Mon profil",
         opinionsConfigureSupabase:
-          "Supabase non configuré : ajoutez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY, puis exécutez le SQL du dossier supabase/migrations dans le dashboard Supabase.",
+          "Supabase non configuré : NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (serveur), puis SQL dans supabase/migrations.",
         weatherWind: "Vent",
         weatherToday: "Aujourd'hui",
         weatherUnavailable: "Météo indisponible pour le moment.",
@@ -413,7 +422,7 @@ export function HomeClient() {
         opinionsTitle: `Public opinion — ${activeCountry.names.en}`,
         opinionsSearchHint: "Search published opinions.",
         opinionsComposerHint:
-          "Sign in with email. Only signed-in members’ posts appear here, by country. You are responsible for what you write.",
+          "Signed-in members only, by country. Sign in with a username and password (no email).",
         opinionsPlaceholder: "Write your opinion…",
         opinionsSubmit: "Post",
         opinionsPosting: "Posting…",
@@ -422,14 +431,18 @@ export function HomeClient() {
         opinionsSidebarNote: "Reader post in “Public opinion”, not a news wire.",
         opinionsAuthTitle: "Sign in — Public opinion",
         opinionsAuthHint:
-          "Enter your email to receive a one-time magic link. After signing in you can read members’ posts and publish your own.",
-        opinionsEmailPlaceholder: "Email",
-        opinionsSendMagicLink: "Send magic link",
-        opinionsCheckEmail: "Check your inbox and tap the link to sign in.",
+          "First visit creates your account on the server with no email. After that, same username and password. Add SUPABASE_SERVICE_ROLE_KEY to server env (Dashboard → API).",
+        opinionsUsernamePlaceholder: "Username",
+        opinionsPasswordPlaceholder: "Password",
+        opinionsAuthButton: "Sign in or create account",
+        opinionsUsernameRules: "Username 3–28 characters (a-z, 0-9, _) and password at least 6 characters.",
+        opinionsWrongPassword: "Wrong username or password.",
+        opinionsServiceRoleMissing:
+          "Add SUPABASE_SERVICE_ROLE_KEY to server-only env (Supabase → Project Settings → API → service_role). Never use NEXT_PUBLIC_ for this key.",
         opinionsSignOut: "Sign out",
         opinionsMyProfile: "My profile",
         opinionsConfigureSupabase:
-          "Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY, then run the SQL in supabase/migrations in your Supabase project.",
+          "Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (server), then run SQL in supabase/migrations.",
         weatherWind: "Wind",
         weatherToday: "Today",
         weatherUnavailable: "Weather is unavailable right now.",
@@ -458,9 +471,12 @@ export function HomeClient() {
       opinionPosted: t.opinionPosted,
       opinionsAuthTitle: t.opinionsAuthTitle,
       opinionsAuthHint: t.opinionsAuthHint,
-      opinionsEmailPlaceholder: t.opinionsEmailPlaceholder,
-      opinionsSendMagicLink: t.opinionsSendMagicLink,
-      opinionsCheckEmail: t.opinionsCheckEmail,
+      opinionsUsernamePlaceholder: t.opinionsUsernamePlaceholder,
+      opinionsPasswordPlaceholder: t.opinionsPasswordPlaceholder,
+      opinionsAuthButton: t.opinionsAuthButton,
+      opinionsUsernameRules: t.opinionsUsernameRules,
+      opinionsWrongPassword: t.opinionsWrongPassword,
+      opinionsServiceRoleMissing: t.opinionsServiceRoleMissing,
       opinionsSignOut: t.opinionsSignOut,
       opinionsMyProfile: t.opinionsMyProfile,
       opinionsConfigureSupabase: t.opinionsConfigureSupabase,
