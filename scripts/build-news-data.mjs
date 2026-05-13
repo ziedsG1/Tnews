@@ -3,20 +3,18 @@ import path from "node:path";
 import Parser from "rss-parser";
 
 const FEEDS = [
-  { id: "google-tunisia-ar", label: "أخبار تونس (مجمّع)", url: "https://news.google.com/rss/search?q=%D8%AA%D9%88%D9%86%D8%B3&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
-  { id: "carthage-ar", label: "الرائد الرسمي — قرطاج", url: "https://news.google.com/rss/search?q=site%3Awww.carthage.tn&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
-  { id: "aljazeera-tunisia-ar", label: "الجزيرة — تونس", url: "https://news.google.com/rss/search?q=site%3Aaljazeera.net%20%D8%AA%D9%88%D9%86%D8%B3&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
-  { id: "mosaique-ar", label: "موزاييك أف أم — العربية", url: "https://news.google.com/rss/search?q=site%3Amosaiquefm.net&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
-  { id: "diwan-ar", label: "ديوان أف أم", url: "https://news.google.com/rss/search?q=site%3Adiwanfm.net&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
-  { id: "jawhara-ar", label: "جوهرة أف أم", url: "https://news.google.com/rss/search?q=site%3Ajawharafm.net&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
-  { id: "express-ar", label: "اكسبريس أف أم", url: "https://news.google.com/rss/search?q=site%3Aexpressfm.tn&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
-  { id: "shems-ar", label: "شمس أف أم", url: "https://news.google.com/rss/search?q=site%3Ashemsfm.net&hl=ar&gl=TN&ceid=TN%3Aar", locale: "ar", independentMedia: false },
+  { id: "tap-tn-ar", label: "وكالة تونس إفريقيا للأنباء (TAP)", url: "https://www.tap.info.tn/ar/rss/tunisia", locale: "ar", independentMedia: false },
+  { id: "lapresse-tn-ar", label: "La Presse — الصحافة", url: "https://www.lapresse.tn/feed/", locale: "ar", independentMedia: false },
+  { id: "mosaique-ar", label: "موزاييك أف أم", url: "https://www.mosaiquefm.net/ar/rss/", locale: "ar", independentMedia: false },
+  { id: "express-ar", label: "Express FM", url: "https://www.radioexpressfm.com/ar/feed/", locale: "ar", independentMedia: false },
+  { id: "shems-ar", label: "شمس أف أم", url: "https://www.shemsfm.net/ar/feed/", locale: "ar", independentMedia: false },
+  { id: "jawhara-ar", label: "جوهرة أف أم", url: "https://www.jawharafm.net/ar/feed/", locale: "ar", independentMedia: false },
   { id: "nawaat", label: "نواة — Nawaat", url: "https://nawaat.org/feed/", locale: "ar", independentMedia: true },
   { id: "alqatiba", label: "الكتيبة — Alqatiba", url: "https://alqatiba.com/feed/", locale: "ar", independentMedia: true },
   { id: "rassd-tunisia", label: "رصد تونس — Rassd", url: "https://rassdtunisia.net/feed/", locale: "ar", independentMedia: true },
   { id: "businessnews", label: "Business News", url: "https://www.businessnews.com.tn/rss", locale: "fr", independentMedia: false },
-  { id: "google-tunisia-fr", label: "Actualités Tunisie (agrégé)", url: "https://news.google.com/rss/search?q=Tunisie&hl=fr&gl=TN&ceid=TN%3Afr", locale: "fr", independentMedia: false },
-  { id: "webdo-fr", label: "Webdo.tn", url: "https://news.google.com/rss/search?q=site%3Awebdo.tn&hl=fr&gl=TN&ceid=TN%3Afr", locale: "fr", independentMedia: false },
+  { id: "lapresse-tn-fr", label: "La Presse (actualités)", url: "https://www.lapresse.tn/feed/", locale: "fr", independentMedia: false },
+  { id: "webdo-fr", label: "Webdo.tn", url: "https://www.webdo.tn/feed/", locale: "fr", independentMedia: false },
 ];
 
 const RULES = [

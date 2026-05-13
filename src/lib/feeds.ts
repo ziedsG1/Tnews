@@ -16,65 +16,50 @@ export type FeedSource = {
 };
 
 /**
- * Arabic-first Tunisian media (Google News by site when RSS isn’t public)
+ * Arabic-first Tunisian media (direct RSS: wire, press, radios, independents)
  * + French feeds for readers who want both.
  */
 export const DEFAULT_FEEDS: FeedSource[] = [
-  // ——— Arabic / tunisian outlets & Tunisia-focused wires ———
+  // ——— Arabic / Tunisia: official wire + major press + radios + independents ———
   {
-    id: "google-tunisia-ar",
-    label: "أخبار تونس (مجمّع)",
-    url: `https://news.google.com/rss/search?q=${encodeURIComponent("تونس")}&hl=ar&gl=TN&ceid=TN%3Aar`,
-    locale: "ar",
-    kind: "major",
-  },
-  // Official portal (e.g. /ar/الرائد_الرسمي) — no stable public RSS; aggregate via Google News by host.
-  {
-    id: "carthage-ar",
-    label: "الرائد الرسمي — قرطاج",
-    url: "https://news.google.com/rss/search?q=site%3Awww.carthage.tn&hl=ar&gl=TN&ceid=TN%3Aar",
+    id: "tap-tn-ar",
+    label: "وكالة تونس إفريقيا للأنباء (TAP)",
+    url: "https://www.tap.info.tn/ar/rss/tunisia",
     locale: "ar",
     kind: "state",
   },
   {
-    id: "aljazeera-tunisia-ar",
-    label: "الجزيرة — تونس",
-    url: `https://news.google.com/rss/search?q=${encodeURIComponent("site:aljazeera.net تونس")}&hl=ar&gl=TN&ceid=TN%3Aar`,
+    id: "lapresse-tn-ar",
+    label: "La Presse — الصحافة",
+    url: "https://www.lapresse.tn/feed/",
     locale: "ar",
     kind: "major",
   },
   {
     id: "mosaique-ar",
-    label: "موزاييك أف أم — العربية",
-    url: "https://news.google.com/rss/search?q=site%3Amosaiquefm.net&hl=ar&gl=TN&ceid=TN%3Aar",
-    locale: "ar",
-    kind: "radio",
-  },
-  {
-    id: "diwan-ar",
-    label: "ديوان أف أم",
-    url: "https://news.google.com/rss/search?q=site%3Adiwanfm.net&hl=ar&gl=TN&ceid=TN%3Aar",
-    locale: "ar",
-    kind: "radio",
-  },
-  {
-    id: "jawhara-ar",
-    label: "جوهرة أف أم",
-    url: "https://news.google.com/rss/search?q=site%3Ajawharafm.net&hl=ar&gl=TN&ceid=TN%3Aar",
+    label: "موزاييك أف أم",
+    url: "https://www.mosaiquefm.net/ar/rss/",
     locale: "ar",
     kind: "radio",
   },
   {
     id: "express-ar",
-    label: "اكسبريس أف أم",
-    url: "https://news.google.com/rss/search?q=site%3Aexpressfm.tn&hl=ar&gl=TN&ceid=TN%3Aar",
+    label: "Express FM",
+    url: "https://www.radioexpressfm.com/ar/feed/",
     locale: "ar",
     kind: "radio",
   },
   {
     id: "shems-ar",
     label: "شمس أف أم",
-    url: "https://news.google.com/rss/search?q=site%3Ashemsfm.net&hl=ar&gl=TN&ceid=TN%3Aar",
+    url: "https://www.shemsfm.net/ar/feed/",
+    locale: "ar",
+    kind: "radio",
+  },
+  {
+    id: "jawhara-ar",
+    label: "جوهرة أف أم",
+    url: "https://www.jawharafm.net/ar/feed/",
     locale: "ar",
     kind: "radio",
   },
@@ -114,16 +99,16 @@ export const DEFAULT_FEEDS: FeedSource[] = [
     kind: "major",
   },
   {
-    id: "google-tunisia-fr",
-    label: "Actualités Tunisie (agrégé)",
-    url: "https://news.google.com/rss/search?q=Tunisie&hl=fr&gl=TN&ceid=TN%3Afr",
+    id: "lapresse-tn-fr",
+    label: "La Presse (actualités)",
+    url: "https://www.lapresse.tn/feed/",
     locale: "fr",
     kind: "major",
   },
   {
     id: "webdo-fr",
     label: "Webdo.tn",
-    url: "https://news.google.com/rss/search?q=site%3Awebdo.tn&hl=fr&gl=TN&ceid=TN%3Afr",
+    url: "https://www.webdo.tn/feed/",
     locale: "fr",
     kind: "major",
   },

@@ -34,14 +34,6 @@ export type CountryConfig = {
   feeds: FeedSource[];
 };
 
-function gnSearch(query: string, opts: { hl: string; gl: string; ceid: string }): string {
-  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${opts.hl}&gl=${opts.gl}&ceid=${encodeURIComponent(opts.ceid)}`;
-}
-
-function gnTopNews(opts: { hl: string; gl: string; ceid: string }): string {
-  return `https://news.google.com/rss?hl=${opts.hl}&gl=${opts.gl}&ceid=${encodeURIComponent(opts.ceid)}`;
-}
-
 function feed(id: string, label: string, url: string, locale: FeedLocale, kind: FeedKind): FeedSource {
   return { id, label, url, locale, kind, independentMedia: kind === "independent" };
 }
@@ -68,10 +60,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-dz-ar", "أخبار الجزائر (Google News)", gnSearch("الجزائر", { hl: "ar", gl: "DZ", ceid: "DZ:ar" }), "ar", "major"),
-      feed("gn-dz-top-ar", "الأكثر تداولا (Google News)", gnTopNews({ hl: "ar", gl: "DZ", ceid: "DZ:ar" }), "ar", "major"),
-      feed("elwatan-dz", "El Watan (Algérie)", "https://www.elwatan.com/feed", "fr", "major"),
-      feed("tsa-dz", "TSA Algérie", "https://www.tsa-algerie.com/feed/", "fr", "major"),
+      feed("algerie360", "Algérie360", "https://www.algerie360.com/feed/", "ar", "major"),
+      feed("ennahar-dz", "النهار — Ennahar", "https://www.ennaharonline.com/rss/", "ar", "major"),
+      feed("tsa-dz", "TSA — التصدي", "https://www.tsa-algerie.com/feed/", "fr", "independent"),
+      feed("elkhabar-dz", "الخبر — El Khabar", "https://www.elkhabar.com/feed/", "ar", "independent"),
     ],
   },
   {
@@ -84,10 +76,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-ma-ar", "أخبار المغرب (Google News)", gnSearch("المغرب", { hl: "ar", gl: "MA", ceid: "MA:ar" }), "ar", "major"),
-      feed("gn-ma-top-ar", "الأكثر تداولا (Google News)", gnTopNews({ hl: "ar", gl: "MA", ceid: "MA:ar" }), "ar", "major"),
       feed("hespress", "هسبريس", "https://www.hespress.com/feed/", "ar", "major"),
-      feed("le360", "Le360 (Maroc)", "https://fr.le360.ma/rss", "fr", "major"),
+      feed("assabah-ma", "الصباح — Assabah", "https://www.assabah.ma/feed", "ar", "major"),
+      feed("yabiladi", "يابلادي — Yabiladi", "https://www.yabiladi.com/rss/", "ar", "independent"),
+      feed("medias24", "Medias24", "https://www.medias24.com/feed/", "fr", "major"),
     ],
   },
   {
@@ -100,7 +92,7 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-fr-top", "Google News France", gnTopNews({ hl: "fr", gl: "FR", ceid: "FR:fr" }), "fr", "major"),
+      feed("bfmtv", "BFMTV", "https://www.bfmtv.com/rss/news-24-7/", "fr", "major"),
       feed("lemonde", "Le Monde", "https://www.lemonde.fr/rss/une.xml", "fr", "major"),
       feed("mediapart", "Mediapart", "https://www.mediapart.fr/articles/feed", "fr", "independent"),
       feed("franceinfo", "franceinfo (radio)", "https://www.francetvinfo.fr/titres.rss", "fr", "radio"),
@@ -116,11 +108,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-us-en", "Google News US", gnTopNews({ hl: "en", gl: "US", ceid: "US:en" }), "fr", "major"),
-      // AP RSS frequently breaks XML parsing; use Google News scoped to apnews.com instead.
-      feed("ap-gn", "AP News (via Google News)", gnSearch("site:apnews.com", { hl: "en", gl: "US", ceid: "US:en" }), "fr", "major"),
+      feed("nbc-us", "NBC News (world)", "https://feeds.nbcnews.com/nbcnews/public/world", "fr", "major"),
+      feed("thehill-us", "The Hill", "https://thehill.com/homenews/feed/", "fr", "major"),
+      feed("cnn-us", "CNN — top stories", "http://rss.cnn.com/rss/cnn_topstories.rss", "fr", "major"),
       feed("propublica", "ProPublica", "https://www.propublica.org/feeds/propublica/main", "fr", "independent"),
-      feed("npr", "NPR (radio)", "https://feeds.npr.org/1001/rss.xml", "fr", "radio"),
     ],
   },
   {
@@ -133,10 +124,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-eg-ar", "أخبار مصر (Google News)", gnSearch("مصر", { hl: "ar", gl: "EG", ceid: "EG:ar" }), "ar", "major"),
-      feed("gn-eg-top-ar", "الأكثر تداولًا (Google News)", gnTopNews({ hl: "ar", gl: "EG", ceid: "EG:ar" }), "ar", "major"),
-      feed("mada-masr", "مدى مصر (Google News)", gnSearch("site:madamasr.com", { hl: "ar", gl: "EG", ceid: "EG:ar" }), "ar", "independent"),
-      feed("nile-radio-eg", "Nile FM / Radio (Google News)", gnSearch("مصر راديو", { hl: "ar", gl: "EG", ceid: "EG:ar" }), "ar", "radio"),
+      feed("bbc-arabic-eg", "BBC عربي", "https://feeds.bbci.co.uk/arabic/rss.xml", "ar", "major"),
+      feed("skynews-arabia-eg", "سكاي نيوز عربية", "https://www.skynewsarabia.com/rss.xml", "ar", "major"),
+      feed("aa-arabic-eg", "وكالة الأناضول", "https://www.aa.com.tr/ar/rss/default?cat=guncel", "ar", "state"),
+      feed("mada-masr", "مدى مصر — Mada Masr", "https://madamasr.com/en/feed/", "ar", "independent"),
     ],
   },
   {
@@ -149,10 +140,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-qa-ar", "أخبار قطر (Google News)", gnSearch("قطر", { hl: "ar", gl: "QA", ceid: "QA:ar" }), "ar", "major"),
-      feed("gn-qa-top-ar", "الأكثر تداولًا (Google News)", gnTopNews({ hl: "ar", gl: "QA", ceid: "QA:ar" }), "ar", "major"),
-      feed("aljazeera-qa", "الجزيرة (Google News)", gnSearch("site:aljazeera.net قطر", { hl: "ar", gl: "QA", ceid: "QA:ar" }), "ar", "major"),
-      feed("indie-qa", "صحافة مستقلة (Google News)", gnSearch("قطر صحافة مستقلة", { hl: "ar", gl: "QA", ceid: "QA:ar" }), "ar", "independent"),
+      feed("aljazeera-ar", "الجزيرة — عربي", "https://www.aljazeera.net/rss", "ar", "major"),
+      feed("aljazeera-en", "Al Jazeera — English", "https://www.aljazeera.com/xml/rss/all.xml", "fr", "major"),
+      feed("dohanews", "Doha News", "https://dohanews.co/feed/", "fr", "independent"),
+      feed("alaraby", "العربي الجديد — Al-Araby Al-Jadeed", "https://www.alaraby.co.uk/rss", "ar", "independent"),
     ],
   },
   {
@@ -165,10 +156,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-sa-ar", "أخبار السعودية (Google News)", gnSearch("السعودية", { hl: "ar", gl: "SA", ceid: "SA:ar" }), "ar", "major"),
-      feed("gn-sa-top-ar", "الأكثر تداولًا (Google News)", gnTopNews({ hl: "ar", gl: "SA", ceid: "SA:ar" }), "ar", "major"),
-      feed("state-sa", "الإخبارية / حكومي (Google News)", gnSearch("السعودية وكالة الأنباء", { hl: "ar", gl: "SA", ceid: "SA:ar" }), "ar", "state"),
-      feed("radio-sa", "راديو السعودية (Google News)", gnSearch("السعودية راديو", { hl: "ar", gl: "SA", ceid: "SA:ar" }), "ar", "radio"),
+      feed("arabnews-sa", "Arab News", "https://www.arabnews.com/rss.xml", "fr", "major"),
+      feed("arabnews-saudi", "Arab News — السعودية", "https://www.arabnews.com/cat/2/rss.xml", "fr", "major"),
+      feed("memo-sa", "Middle East Monitor", "https://www.middleeastmonitor.com/feed/", "fr", "independent"),
+      feed("aa-arabic-sa", "وكالة الأناضول", "https://www.aa.com.tr/ar/rss/default?cat=guncel", "ar", "state"),
     ],
   },
   {
@@ -181,10 +172,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-gb-en", "Google News UK", gnTopNews({ hl: "en-GB", gl: "GB", ceid: "GB:en" }), "fr", "major"),
+      feed("skynews-uk", "Sky News UK", "https://feeds.skynews.com/feeds/rss/uk.xml", "fr", "major"),
       feed("bbc-uk", "BBC News", "https://feeds.bbci.co.uk/news/rss.xml", "fr", "major"),
       feed("guardian-uk", "The Guardian", "https://www.theguardian.com/world/rss", "fr", "independent"),
-      feed("radio4-uk", "BBC Radio (Google News)", gnSearch("BBC radio UK", { hl: "en-GB", gl: "GB", ceid: "GB:en" }), "fr", "radio"),
+      feed("metro-uk", "Metro", "https://metro.co.uk/news/feed/", "fr", "major"),
     ],
   },
   {
@@ -197,10 +188,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-it-it", "Google News Italia", gnTopNews({ hl: "it", gl: "IT", ceid: "IT:it" }), "fr", "major"),
+      feed("corriere-it", "Corriere della Sera", "https://xml.corriereobjects.it/rss/homepage.xml", "fr", "major"),
       feed("ansa-it", "ANSA", "https://www.ansa.it/sito/ansait_rss.xml", "fr", "major"),
       feed("ilpost-it", "Il Post", "https://www.ilpost.it/feed/", "fr", "independent"),
-      feed("rai-radio-it", "RAI Radio (Google News)", gnSearch("RAI radio Italia", { hl: "it", gl: "IT", ceid: "IT:it" }), "fr", "radio"),
+      feed("adnkronos-it", "Adnkronos", "https://www.adnkronos.com/RSS_PrimaPagina.xml", "fr", "major"),
     ],
   },
   {
@@ -213,10 +204,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-il-en", "Google News Israel", gnTopNews({ hl: "en", gl: "IL", ceid: "IL:en" }), "ar", "major"),
-      feed("gn-il-ar", "أخبار إسرائيل (Google News)", gnSearch("إسرائيل", { hl: "ar", gl: "IL", ceid: "IL:ar" }), "ar", "major"),
-      feed("gn-il-he", "Google News (עברית)", gnTopNews({ hl: "he", gl: "IL", ceid: "IL:he" }), "fr", "major"),
-      feed("gn-il-haaretz", "Haaretz (Google News)", gnSearch("site:haaretz.com", { hl: "en", gl: "IL", ceid: "IL:en" }), "fr", "independent"),
+      feed("jpost-il", "Jerusalem Post", "https://www.jpost.com/Rss/RssFeedsHeadlines.aspx", "ar", "major"),
+      feed("ynet-il", "Ynet", "https://www.ynet.co.il/Integration/StoryRss2.xml", "ar", "major"),
+      feed("bbc-me-il", "BBC — الشرق الأوسط", "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml", "ar", "major"),
+      feed("972mag-il", "+972 Magazine", "https://www.972mag.com/feed/", "fr", "independent"),
     ],
   },
   {
@@ -229,10 +220,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-es-es", "Google News España", gnTopNews({ hl: "es", gl: "ES", ceid: "ES:es" }), "fr", "major"),
+      feed("rtve-es", "RTVE — noticias", "https://www.rtve.es/rss/temas_noticias.xml", "fr", "state"),
       feed("elpais-es", "El País", "https://feeds.elpais.com/m/rss-s/pages/ep/site/elpais.com/portada", "fr", "major"),
       feed("eldiario-es", "elDiario.es", "https://www.eldiario.es/rss/", "fr", "independent"),
-      feed("gn-es-radio", "Radio España (Google News)", gnSearch("radio España noticias", { hl: "es", gl: "ES", ceid: "ES:es" }), "fr", "radio"),
+      feed("abc-es", "ABC", "https://www.abc.es/rss/feeds/abcPortada.xml", "fr", "major"),
     ],
   },
   {
@@ -245,10 +236,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-de-de", "Google News Deutschland", gnTopNews({ hl: "de", gl: "DE", ceid: "DE:de" }), "fr", "major"),
+      feed("tagesschau-de", "tagesschau (ARD)", "https://www.tagesschau.de/index~rss2.xml", "fr", "state"),
       feed("spiegel-de", "Der Spiegel", "https://www.spiegel.de/schlagzeilen/index.rss", "fr", "major"),
       feed("taz-de", "taz", "https://taz.de/!p4608/rss.xml", "fr", "independent"),
-      feed("gn-de-radio", "Deutschlandradio (Google News)", gnSearch("Deutschlandradio", { hl: "de", gl: "DE", ceid: "DE:de" }), "fr", "radio"),
+      feed("dw-de", "DW (Deutsche Welle)", "https://rss.dw.com/rdf/rss-en-all", "fr", "radio"),
     ],
   },
   {
@@ -261,10 +252,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-tr-tr", "Google News Türkiye", gnTopNews({ hl: "tr", gl: "TR", ceid: "TR:tr" }), "ar", "major"),
-      feed("gn-tr-ar", "أخبار تركيا (Google News)", gnSearch("تركيا", { hl: "ar", gl: "TR", ceid: "TR:ar" }), "ar", "major"),
-      feed("gn-tr-top-ar", "الأكثر تداولا (Google News)", gnTopNews({ hl: "ar", gl: "TR", ceid: "TR:ar" }), "ar", "major"),
-      feed("gn-tr-indie", "صحافة مستقلة (Google News)", gnSearch("تركيا independent journalism", { hl: "ar", gl: "TR", ceid: "TR:ar" }), "ar", "independent"),
+      feed("aa-tr", "وكالة الأناضول", "https://www.aa.com.tr/ar/rss/default?cat=guncel", "ar", "state"),
+      feed("cumhuriyet-tr", "Cumhuriyet", "https://www.cumhuriyet.com.tr/rss", "ar", "independent"),
+      feed("hurriyet-tr", "Hürriyet", "https://www.hurriyet.com.tr/rss/gundem", "ar", "major"),
+      feed("bbc-turkce", "BBC Türkçe", "https://feeds.bbci.co.uk/turkce/rss.xml", "ar", "major"),
     ],
   },
   {
@@ -277,10 +268,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-ly-ar", "أخبار ليبيا (Google News)", gnSearch("ليبيا", { hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
-      feed("gn-ly-top-ar", "الأكثر تداولا (Google News)", gnTopNews({ hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
-      feed("gn-ly-tripoli", "طرابلس (Google News)", gnSearch("طرابلس ليبيا", { hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
-      feed("gn-ly-benghazi", "بنغازي (Google News)", gnSearch("بنغازي ليبيا", { hl: "ar", gl: "LY", ceid: "LY:ar" }), "ar", "major"),
+      feed("libyaherald", "Libya Herald", "https://www.libyaherald.com/feed/", "fr", "major"),
+      feed("skynews-arabia-ly", "سكاي نيوز عربية", "https://www.skynewsarabia.com/rss.xml", "ar", "major"),
+      feed("bbc-arabic-ly", "BBC عربي", "https://feeds.bbci.co.uk/arabic/rss.xml", "ar", "major"),
+      feed("aa-arabic-ly", "وكالة الأناضول", "https://www.aa.com.tr/ar/rss/default?cat=guncel", "ar", "state"),
     ],
   },
   {
@@ -293,10 +284,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "ar",
     feeds: [
-      feed("gn-ir-fa", "Google News ایران", gnTopNews({ hl: "fa", gl: "IR", ceid: "IR:fa" }), "ar", "major"),
-      feed("gn-ir-ar", "أخبار إيران (Google News)", gnSearch("إيران", { hl: "ar", gl: "IR", ceid: "IR:ar" }), "ar", "major"),
-      feed("gn-ir-en", "Iran (Google News EN)", gnTopNews({ hl: "en", gl: "IR", ceid: "IR:en" }), "fr", "major"),
-      feed("gn-ir-bbc", "BBC Persian (Google News)", gnSearch("site:bbc.com/persian", { hl: "fa", gl: "IR", ceid: "IR:fa" }), "ar", "independent"),
+      feed("presstv-ir", "Press TV", "https://www.presstv.ir/rss.xml", "ar", "state"),
+      feed("tehrantimes-ir", "Tehran Times", "https://www.tehrantimes.com/rss", "fr", "major"),
+      feed("mehr-ir", "Mehr News (EN)", "https://en.mehrnews.com/rss", "fr", "major"),
+      feed("bbc-persian-ir", "BBC فارسی", "https://feeds.bbci.co.uk/persian/rss.xml", "ar", "independent"),
     ],
   },
   {
@@ -309,10 +300,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-ru-ru", "Google News Россия", gnTopNews({ hl: "ru", gl: "RU", ceid: "RU:ru" }), "fr", "major"),
-      feed("gn-ru-en", "Russia (Google News EN)", gnTopNews({ hl: "en", gl: "RU", ceid: "RU:en" }), "fr", "major"),
-      feed("gn-ru-ar", "روسيا (Google News)", gnSearch("روسيا", { hl: "ar", gl: "RU", ceid: "RU:ar" }), "ar", "major"),
-      feed("gn-ru-meduza", "Meduza (Google News)", gnSearch("site:meduza.io", { hl: "en", gl: "RU", ceid: "RU:en" }), "fr", "independent"),
+      feed("tass-ru", "TASS", "https://tass.com/rss/v2.xml", "fr", "state"),
+      feed("kommersant-ru", "Kommersant", "https://www.kommersant.ru/RSS/news.xml", "fr", "major"),
+      feed("meduza-ru", "Meduza", "https://meduza.io/rss/all", "fr", "independent"),
+      feed("moscowtimes-ru", "The Moscow Times", "https://www.themoscowtimes.com/rss/news", "fr", "major"),
     ],
   },
   {
@@ -325,10 +316,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-jp-jp", "Google ニュース", gnTopNews({ hl: "ja", gl: "JP", ceid: "JP:ja" }), "fr", "major"),
-      feed("gn-jp-en", "Japan (Google News EN)", gnTopNews({ hl: "en", gl: "JP", ceid: "JP:en" }), "fr", "major"),
-      feed("nhk-en", "NHK World", "https://www3.nhk.or.jp/nhkworld/en/news/rss/today.xml", "fr", "major"),
-      feed("gn-jp-indie", "Japan independent (Google News)", gnSearch("Japan independent journalism", { hl: "en", gl: "JP", ceid: "JP:en" }), "fr", "independent"),
+      feed("nhk-jp", "NHK World", "https://www3.nhk.or.jp/nhkworld/en/news/rss/today.xml", "fr", "major"),
+      feed("japantimes-jp", "Japan Times", "https://www.japantimes.co.jp/feed/", "fr", "major"),
+      feed("nippon-jp", "Nippon.com", "https://www.nippon.com/en/feed/", "fr", "major"),
+      feed("diplomat-jp", "The Diplomat (Asie-Pacifique)", "https://thediplomat.com/feed/", "fr", "major"),
     ],
   },
   {
@@ -341,10 +332,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-cn-zh", "Google新闻 中国", gnTopNews({ hl: "zh-CN", gl: "CN", ceid: "CN:zh-Hans" }), "fr", "major"),
-      feed("gn-cn-en", "China (Google News EN)", gnTopNews({ hl: "en", gl: "CN", ceid: "CN:en" }), "fr", "major"),
-      feed("gn-cn-ar", "الصين (Google News)", gnSearch("الصين", { hl: "ar", gl: "CN", ceid: "CN:ar" }), "ar", "major"),
-      feed("gn-cn-scmp", "South China Morning Post (GN)", gnSearch("site:scmp.com", { hl: "en", gl: "CN", ceid: "CN:en" }), "fr", "independent"),
+      feed("chinadaily-cn", "China Daily", "http://www.chinadaily.com.cn/rss/china_rss.xml", "fr", "state"),
+      feed("globaltimes-cn", "Global Times", "https://www.globaltimes.cn/rss/outbrain.xml", "fr", "state"),
+      feed("xinhua-cn", "Xinhua (world, EN)", "http://www.xinhuanet.com/english/rss/worldrss.xml", "fr", "state"),
+      feed("scmp-cn", "South China Morning Post", "https://www.scmp.com/rss/2/feed", "fr", "independent"),
     ],
   },
   {
@@ -357,10 +348,10 @@ export const COUNTRIES: CountryConfig[] = [
     },
     primaryLocale: "fr",
     feeds: [
-      feed("gn-in-en", "Google News India", gnTopNews({ hl: "en", gl: "IN", ceid: "IN:en" }), "fr", "major"),
-      feed("gn-in-hi", "Google News भारत", gnTopNews({ hl: "hi", gl: "IN", ceid: "IN:hi" }), "fr", "major"),
-      feed("gn-in-ar", "الهند (Google News)", gnSearch("الهند", { hl: "ar", gl: "IN", ceid: "IN:ar" }), "ar", "major"),
-      feed("gn-in-scroll", "Scroll.in (Google News)", gnSearch("site:scroll.in", { hl: "en", gl: "IN", ceid: "IN:en" }), "fr", "independent"),
+      feed("hindu-in", "The Hindu", "https://www.thehindu.com/news/feeder/default.rss", "fr", "major"),
+      feed("ndtv-in", "NDTV", "https://feeds.feedburner.com/ndtvnews-top-stories", "fr", "major"),
+      feed("bbc-india-in", "BBC News — India", "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml", "fr", "major"),
+      feed("altnews-in", "Alt News", "https://www.altnews.in/feed/", "fr", "independent"),
     ],
   },
 ];
@@ -369,4 +360,3 @@ export function getCountry(id: string | null | undefined): CountryConfig {
   const normalized = String(id ?? "TN").toUpperCase();
   return COUNTRIES.find((c) => c.id === normalized) ?? COUNTRIES[0]!;
 }
-
