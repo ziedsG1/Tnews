@@ -370,11 +370,61 @@ export async function captureSharePreviewAsJpegBlob(
 
 export type ShareImageResult = { kind: "sheet" } | { kind: "tab" } | { kind: "inline"; blob: Blob } | { kind: "fail" };
 
+export type ShareMediaResult = ShareImageResult;
+
 export async function shareStoryJpegBlobViaSheetOrFallback(
   blob: Blob,
   meta: { title: string; filename: string },
 ): Promise<ShareImageResult> {
   const file = new File([blob], meta.filename, { type: "image/jpeg" });
+  const nav = navigator as Navigator & {
+    share?: (data: ShareData) => Promise<void>;
+    canShare?: (data: ShareData) => boolean;
+  };
+  if (typeof nav.share === "function") {
+    const data: ShareData = { files: [file], title: meta.title };
+    const allowed = typeof nav.canShare !== "function" ? true : Boolean(nav.canShare(data));
+    if (allowed) {
+      try {
+        await nav.share(data);
+        return { kind: "sheet" };
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          return { kind: "sheet" };
+        }
+      }
+    }
+  }
+
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    return { kind: "inline", blob };
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (w) {
+      try {
+        w.focus();
+      } catch {
+        /* ignore */
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 600000);
+      return { kind: "tab" };
+    }
+  } catch {
+    /* ignore */
+  }
+  URL.revokeObjectURL(url);
+  return { kind: "inline", blob };
+}
+
+export async function shareStoryVideoBlobViaSheetOrFallback(
+  blob: Blob,
+  meta: { title: string; filename: string },
+): Promise<ShareMediaResult> {
+  const file = new File([blob], meta.filename, { type: blob.type || "video/webm" });
   const nav = navigator as Navigator & {
     share?: (data: ShareData) => Promise<void>;
     canShare?: (data: ShareData) => boolean;
