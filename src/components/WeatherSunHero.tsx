@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { heatIntensity, showHeatShimmer } from "@/lib/weatherSunVisual";
 import { weatherCodeEmoji } from "@/lib/weather";
 
 export type WeatherSunHeroProps = {
@@ -9,22 +10,14 @@ export type WeatherSunHeroProps = {
   label: string;
   city: string;
   windText: string;
-  /** Page: interactive + responsive. Story: larger static sun for share capture. */
   variant?: "page" | "story";
   interactive?: boolean;
   className?: string;
 };
 
-function sunIntensity(code: number | null): number {
-  if (code == null) return 0.85;
-  if (code <= 1) return 1;
-  if (code <= 3) return 0.72;
-  if (code === 45 || code === 48) return 0.45;
-  return 0.55;
-}
-
 function WeatherSunOrb({
   weatherCode,
+  temperature,
   variant,
   interactive,
   tilt,
@@ -38,6 +31,7 @@ function WeatherSunOrb({
   label,
 }: {
   weatherCode: number | null;
+  temperature: number | null;
   variant: "page" | "story";
   interactive: boolean;
   tilt: { x: number; y: number };
@@ -50,21 +44,26 @@ function WeatherSunOrb({
   stageRef: React.RefObject<HTMLDivElement | null>;
   label: string;
 }) {
-  const glow = sunIntensity(weatherCode);
+  const heat = heatIntensity(weatherCode, temperature);
   const emoji = weatherCodeEmoji(weatherCode);
   const stageSize =
     variant === "story"
       ? "h-[200px] w-[200px]"
       : "h-[min(52vw,220px)] w-[min(52vw,220px)] max-h-[220px] max-w-[220px]";
-  const emojiSize = variant === "story" ? "text-[5.5rem]" : "text-[clamp(3.5rem,14vw,5.5rem)]";
+  const showHeat = showHeatShimmer(heat);
 
   return (
     <div
       ref={stageRef}
       className={`weather-sun-stage relative mx-auto flex ${stageSize} items-center justify-center ${
-        interactive ? "cursor-grab touch-none active:cursor-grabbing" : "pointer-events-none"
-      }`}
-      style={{ perspective: "900px" }}
+        variant === "story" ? "weather-sun-stage--story" : ""
+      } ${interactive ? "cursor-grab touch-none active:cursor-grabbing" : ""}`}
+      style={
+        {
+          perspective: "1100px",
+          ["--sun-heat" as string]: String(heat),
+        } as React.CSSProperties
+      }
       onPointerMove={interactive ? onPointerMove : undefined}
       onPointerLeave={interactive ? onPointerLeave : undefined}
       onPointerDown={interactive ? onPointerDown : undefined}
@@ -73,28 +72,50 @@ function WeatherSunOrb({
       role="img"
       aria-label={label}
     >
-      <div
-        className={`weather-sun-orbit relative h-full w-full ${interactive ? "transition-transform duration-150 ease-out" : ""} ${pressed ? "scale-[0.96]" : "scale-100"}`}
-        style={{
-          transform: interactive ? `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` : "rotateX(-6deg) rotateY(8deg)",
-          transformStyle: "preserve-3d",
-        }}
-      >
-        <div className="weather-sun-rays absolute inset-0" aria-hidden />
-        <div
-          className="weather-sun-core absolute left-1/2 top-1/2 flex h-[72%] w-[72%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full"
-          style={{
-            opacity: glow,
-            boxShadow: `0 0 ${48 * glow}px ${24 * glow}px rgba(251, 191, 36, 0.55), inset 0 -12px 24px rgba(245, 158, 11, 0.35)`,
-          }}
-        >
-          <span className={`select-none leading-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)] ${emojiSize}`}>
-            {emoji}
-          </span>
+      {showHeat ? (
+        <div className="weather-heat-field pointer-events-none absolute inset-0" aria-hidden>
+          <span className="weather-heat-wave weather-heat-wave-1" />
+          <span className="weather-heat-wave weather-heat-wave-2" />
+          <span className="weather-heat-wave weather-heat-wave-3" />
+          <span className="weather-heat-wave weather-heat-wave-4" />
+          <span className="weather-heat-haze" />
         </div>
-        {(weatherCode ?? 0) > 3 && (
-          <div className="weather-sun-cloud absolute inset-x-[8%] top-[18%] h-[28%] rounded-full bg-white/25 blur-md" aria-hidden />
-        )}
+      ) : null}
+
+      <div
+        className={`weather-sun-orbit relative h-[88%] w-[88%] ${interactive ? "weather-sun-orbit--interactive" : "weather-sun-orbit--alive"} ${pressed ? "scale-[0.96]" : ""}`}
+        style={
+          interactive
+            ? ({
+                ["--sun-tilt-x" as string]: `${tilt.x}deg`,
+                ["--sun-tilt-y" as string]: `${tilt.y}deg`,
+              } as React.CSSProperties)
+            : undefined
+        }
+      >
+        <div className="weather-sun-corona pointer-events-none absolute inset-[-18%] rounded-full" aria-hidden />
+        <div className="weather-sun-rays pointer-events-none absolute inset-[-6%]" aria-hidden />
+        <div className="weather-sun-rays weather-sun-rays--slow pointer-events-none absolute inset-[-10%]" aria-hidden />
+
+        <div className="weather-sun-body pointer-events-none absolute left-1/2 top-1/2 h-[76%] w-[76%] -translate-x-1/2 -translate-y-1/2">
+          <div className="weather-sun-sphere relative h-full w-full rounded-full">
+            <div className="weather-sun-limb absolute inset-0 rounded-full" aria-hidden />
+            <div className="weather-sun-flare absolute inset-0 rounded-full" aria-hidden />
+            <span
+              className="weather-sun-emoji absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none leading-none"
+              aria-hidden
+            >
+              {emoji}
+            </span>
+          </div>
+        </div>
+
+        {(weatherCode ?? 0) > 3 ? (
+          <>
+            <div className="weather-sun-cloud weather-sun-cloud-a pointer-events-none absolute inset-x-[4%] top-[12%] h-[30%]" aria-hidden />
+            <div className="weather-sun-cloud weather-sun-cloud-b pointer-events-none absolute inset-x-[14%] top-[22%] h-[22%]" aria-hidden />
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -111,7 +132,7 @@ export function WeatherSunHero({
   className = "",
 }: WeatherSunHeroProps) {
   const stageRef = useRef<HTMLDivElement>(null);
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [tilt, setTilt] = useState({ x: -6, y: 8 });
   const [pressed, setPressed] = useState(false);
   const isInteractive = interactive ?? variant === "page";
 
@@ -121,18 +142,20 @@ export function WeatherSunHero({
     const r = el.getBoundingClientRect();
     const px = (e.clientX - r.left) / r.width - 0.5;
     const py = (e.clientY - r.top) / r.height - 0.5;
-    setTilt({ x: py * -22, y: px * 26 });
+    setTilt({ x: py * -28, y: px * 32 });
   }, []);
 
-  const resetTilt = useCallback(() => setTilt({ x: 0, y: 0 }), []);
+  const resetTilt = useCallback(() => setTilt({ x: -6, y: 8 }), []);
 
-  const tempClass =
-    variant === "story" ? "text-[52px] sm:text-[52px]" : "text-5xl sm:text-6xl";
+  const tempClass = variant === "story" ? "text-[52px] sm:text-[52px]" : "text-5xl sm:text-6xl";
 
   return (
-    <div className={`weather-hero flex flex-col items-center px-2 text-center ${variant === "page" ? "py-6" : "py-2"} ${className}`}>
+    <div
+      className={`weather-hero flex flex-col items-center px-2 text-center ${variant === "page" ? "py-6" : "py-2"} ${className}`}
+    >
       <WeatherSunOrb
         weatherCode={weatherCode}
+        temperature={temperature}
         variant={variant}
         interactive={isInteractive}
         tilt={tilt}
