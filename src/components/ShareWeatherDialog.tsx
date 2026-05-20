@@ -10,6 +10,7 @@ import {
   shareStoryJpegBlobViaSheetOrFallback,
   slugFilename,
 } from "@/lib/shareStoryCapture";
+import { WeatherSunHero } from "@/components/WeatherSunHero";
 import type { ThemeMode } from "@/lib/uiTheme";
 import { weatherCodeEmoji, weatherCodeLabel } from "@/lib/weather";
 
@@ -133,38 +134,35 @@ function WeatherStoryCapture({
 }) {
   const rtl = uiLang === "ar";
   const loc = uiLang === "ar" ? "ar" : "fr-TN";
-  const emoji = weatherCodeEmoji(weather.current.weatherCode);
   const condition = weatherCodeLabel(weather.current.weatherCode, uiLang);
   const days = weather.daily.slice(0, 5);
   const windLabel = WEATHER_LABELS[uiLang].wind;
+  const windText = `${windLabel}: ${weather.current.windSpeed == null ? "—" : `${Math.round(weather.current.windSpeed)} km/h`}`;
 
   return (
     <div
-      className="share-story-capture relative flex h-[640px] w-[360px] flex-col overflow-hidden bg-gradient-to-br from-sky-950 via-cyan-950 to-indigo-950 text-white"
+      className="share-story-capture relative flex h-[640px] w-[360px] flex-col overflow-hidden bg-gradient-to-br from-sky-950/95 via-amber-950/25 to-indigo-950/90 text-white"
       dir={rtl ? "rtl" : "ltr"}
       lang={uiLang === "ar" ? "ar" : uiLang === "fr" ? "fr" : "en"}
     >
-      <div className="pointer-events-none absolute right-0 top-0 text-[140px] leading-none opacity-25" aria-hidden>
-        {emoji}
-      </div>
-      <div className="relative z-[1] flex flex-1 flex-col px-5 pb-5 pt-6">
-        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-sky-200/90">{siteLabel}</p>
-        <p className="mt-0.5 text-[11px] font-semibold text-slate-200/90">{countryName}</p>
-        <p className="mt-4 text-sm text-sky-100/90">{weather.city}</p>
-        <p className="mt-1 text-[56px] font-black leading-none tracking-tight">
-          {weather.current.temperature == null ? "—" : `${Math.round(weather.current.temperature)}°`}
-        </p>
-        <p className="mt-2 flex items-center gap-2 text-[15px] font-semibold text-white">
-          <span className="text-2xl" aria-hidden>
-            {emoji}
-          </span>
-          <span className="leading-snug">{condition}</span>
-        </p>
-        <p className="mt-2 text-[12px] text-sky-100/85">
-          {windLabel}:{" "}
-          {weather.current.windSpeed == null ? "—" : `${Math.round(weather.current.windSpeed)} km/h`}
-        </p>
-        <div className="mt-auto space-y-1.5 border-t border-white/15 pt-4">
+      <div className="relative z-[1] flex flex-1 flex-col px-4 pb-4 pt-5">
+        <p className="text-center text-[10px] font-bold uppercase tracking-[0.22em] text-sky-200/90">{siteLabel}</p>
+        <p className="text-center text-[11px] font-semibold text-slate-200/90">{countryName}</p>
+
+        <div className="flex flex-1 flex-col justify-center">
+          <WeatherSunHero
+            variant="story"
+            interactive={false}
+            weatherCode={weather.current.weatherCode}
+            temperature={weather.current.temperature}
+            label={condition}
+            city={weather.city}
+            windText={windText}
+            className="py-0"
+          />
+        </div>
+
+        <div className="mt-auto space-y-1.5 border-t border-white/15 pt-3">
           {days.map((d) => (
             <div
               key={d.date}

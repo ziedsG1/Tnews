@@ -113,7 +113,7 @@ function pickImageUrl(item: ParsedItem): string | null {
 
 async function fetchOneFeed(source: FeedSource): Promise<NewsArticle[]> {
   const parser = new Parser({
-    timeout: 12000,
+    timeout: 9000,
     headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml, */*" },
     customFields: {
       item: [

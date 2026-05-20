@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import type { NewsArticle } from "@/lib/aggregateNews";
-import type { ThemeMode } from "@/lib/uiTheme";
+import { normalizeThemeMode, type ThemeMode } from "@/lib/uiTheme";
 import { proxiedArticleImageUrl } from "@/lib/shareImageUrl";
 import {
   captureSharePreviewAsJpegBlob,
@@ -267,11 +267,7 @@ function ShareStoryCapture({
       ? "bg-[#0b0d14]"
       : captureTheme === "light"
         ? "bg-white"
-        : captureTheme === "broadsheet"
-          ? "bg-[#fdf5e6]"
-          : captureTheme === "newspaper"
-            ? "bg-[#fffdf5]"
-            : "bg-[#fffdf5]";
+        : "bg-[#fdf5e6]";
   const panelText =
     captureTheme === "dark" ? "text-slate-100" : captureTheme === "light" ? "text-slate-900" : "text-[#0c0806]";
   const siteAccent =
@@ -490,38 +486,6 @@ function SharePreview({
     );
   }
 
-  if (captureTheme === "newspaper") {
-    return (
-      <div
-        className={`rounded-sm border-[1px] border-b-[3px] border-[#3d2f1f] bg-[#fffdf5] p-5 text-[#1a120c] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${ar}`}
-        dir={rtl ? "rtl" : "ltr"}
-        lang={rtl ? "ar" : "fr"}
-      >
-        <p className="text-center font-serif text-sm font-extrabold uppercase tracking-widest text-[#5c4030]">
-          {siteLabel}
-        </p>
-        <p className="mt-1 text-center text-[10px] font-semibold text-[#6b5344]">{article.sourceLabel}</p>
-        <hr className="my-3 border-[#3d2f1f]/40" />
-        <h2 className={`text-center text-lg font-bold leading-snug ${rtl ? "" : "font-serif"}`}>{headline}</h2>
-        {shareImg ? (
-          <div className="mt-3 flex justify-center">
-            <img
-              src={shareImg}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="max-h-52 w-full max-w-md rounded border border-[#3d2f1f]/40 object-cover"
-            />
-          </div>
-        ) : null}
-        <p className="theme-muted mt-2 text-center text-[11px]">{dateStr}</p>
-        {article.summary ? (
-          <p className={`mt-3 text-justify text-sm leading-relaxed text-[#3d2f1f] ${rtl ? "" : "font-serif"}`}>{article.summary}</p>
-        ) : null}
-        <p className="mt-3 text-center text-[10px] uppercase text-[#6b5344]">{article.topic}</p>
-      </div>
-    );
-  }
-
   if (captureTheme === "light") {
     return (
       <div
@@ -595,6 +559,7 @@ export function ShareArticleDialog({
   uiLang: "ar" | "fr" | "en";
   onClose: () => void;
 }) {
+  const theme = normalizeThemeMode(captureTheme);
   const labels = LABELS[uiLang];
   const article = articles[0] ?? null;
   const storyCaptureRef = useRef<HTMLDivElement>(null);
@@ -645,7 +610,7 @@ export function ShareArticleDialog({
       flushSync(() => setStoryRevealForCapture(true));
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
       await new Promise<void>((r) => window.setTimeout(() => r(), 320));
-      const blob = await captureSharePreviewAsJpegBlob(storyCaptureRef.current, captureTheme, compactCapture);
+      const blob = await captureSharePreviewAsJpegBlob(storyCaptureRef.current, theme, compactCapture);
       if (!blob) {
         setFbErr(inAppBrowserLikely() ? labels.igFailInApp : labels.igFail);
         window.open(facebookFeedShareUrl(article.link), "_blank", "noopener,noreferrer");
@@ -667,7 +632,7 @@ export function ShareArticleDialog({
       flushSync(() => setStoryRevealForCapture(false));
       setFbBusy(false);
     }
-  }, [article, captureTheme, compactCapture, labels.igFail, labels.igFailInApp]);
+  }, [article, theme, compactCapture, labels.igFail, labels.igFailInApp]);
 
   const runInstagramShare = useCallback(async () => {
     if (!article) return;
@@ -691,7 +656,7 @@ export function ShareArticleDialog({
       const outcome = await shareInstagramStoryFromPreview(
         storyCaptureRef.current,
         article,
-        captureTheme,
+        theme,
         compactCapture,
       );
       if (outcome.kind === "fail") {
@@ -708,7 +673,7 @@ export function ShareArticleDialog({
       flushSync(() => setStoryRevealForCapture(false));
       setIgBusy(false);
     }
-  }, [article, captureTheme, compactCapture, labels.igFail, labels.igFailInApp]);
+  }, [article, theme, compactCapture, labels.igFail, labels.igFailInApp]);
 
   return (
     <>
@@ -728,7 +693,7 @@ export function ShareArticleDialog({
                 data-share-capture-root
                 className="h-[640px] w-[360px] shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10"
               >
-                <ShareStoryCapture article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
+                <ShareStoryCapture article={article} siteLabel={siteLabel} captureTheme={theme} />
               </div>
             </div>,
             document.body,
@@ -764,7 +729,7 @@ export function ShareArticleDialog({
         {article ? (
           <>
             <div className="max-h-[38vh] min-h-[200px] overflow-y-auto rounded-lg border border-white/10">
-              <SharePreview article={article} siteLabel={siteLabel} captureTheme={captureTheme} />
+              <SharePreview article={article} siteLabel={siteLabel} captureTheme={theme} />
             </div>
             <div className="relative z-10 mt-4 flex flex-col gap-2">
               <button

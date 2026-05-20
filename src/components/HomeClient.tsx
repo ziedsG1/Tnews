@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { NewsArticle } from "@/lib/aggregateNews";
 import { topicFilterGroup, type TopicFilterGroup } from "@/lib/topics";
 import { COUNTRIES, type CountryId, type UiLang } from "@/lib/countries";
+import { detectDefaultCountry, isCountryId } from "@/lib/defaultCountry";
 import { ArticleCard } from "@/components/ArticleCard";
 import { BrandLogo } from "@/components/BrandLogo";
+import { NewsGridSkeleton } from "@/components/NewsGridSkeleton";
+import { WeatherSunHero } from "@/components/WeatherSunHero";
 import { PublicOpinionsPanel, type PublicOpinionsLabels } from "@/components/PublicOpinionsPanel";
 import { ShareArticleDialog } from "@/components/ShareArticleDialog";
 import { ShareWeatherDialog } from "@/components/ShareWeatherDialog";
@@ -25,7 +28,6 @@ const FILTER_LABELS: Record<TopicFilterGroup, { fr: string; ar: string }> = {
 const THEME_LABELS: Record<ThemeMode, string> = {
   dark: "Dark",
   light: "Light",
-  newspaper: "1980",
   broadsheet: "Heritage",
 };
 
@@ -204,16 +206,47 @@ const defaultFilterGroups = (): Record<TopicFilterGroup, boolean> => ({
   4: true,
 });
 
-export function HomeClient() {
-  const [data, setData] = useState<ApiPayload | null>(null);
-  const [loading, setLoading] = useState(true);
+function newsCacheKey(country: CountryId, uiLang: UiLang): string {
+  return `${country}:${uiLang}`;
+}
+
+const NEWS_STORAGE_KEY = "tnews.news.v1";
+
+function readNewsStorage(): Record<string, ApiPayload> {
+  try {
+    const raw = window.localStorage.getItem(NEWS_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, ApiPayload>;
+  } catch {
+    return {};
+  }
+}
+
+type HomeClientProps = {
+  initialNews?: ApiPayload;
+  initialCountry?: CountryId;
+  initialUiLang?: UiLang;
+};
+
+export function HomeClient({
+  initialNews,
+  initialCountry = "TN",
+  initialUiLang = "ar",
+}: HomeClientProps = {}) {
+  const initialKey = newsCacheKey(initialCountry, initialUiLang);
+  const [newsByKey, setNewsByKey] = useState<Record<string, ApiPayload>>(() =>
+    initialNews ? { [initialKey]: initialNews } : {},
+  );
+  const newsByKeyRef = useRef(newsByKey);
+  newsByKeyRef.current = newsByKey;
+  const [newsRefreshing, setNewsRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   /** At most one selected article (sidebar + share). */
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterGroups, setFilterGroups] = useState<Record<TopicFilterGroup, boolean>>(defaultFilterGroups);
   const [searchQuery, setSearchQuery] = useState("");
-  const [country, setCountry] = useState<CountryId>("TN");
-  const [uiLang, setUiLang] = useState<UiLang>("ar");
+  const [country, setCountry] = useState<CountryId>(initialCountry);
+  const [uiLang, setUiLang] = useState<UiLang>(initialUiLang);
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [viewMode, setViewMode] = useState<"news" | "weather" | "opinions">("news");
   const [weatherData, setWeatherData] = useState<WeatherPayload | null>(null);
@@ -230,26 +263,30 @@ export function HomeClient() {
   } | null>(null);
   const activeCountry = useMemo(() => COUNTRIES.find((c) => c.id === country) ?? COUNTRIES[0]!, [country]);
 
+  const currentNewsKey = useMemo(() => newsCacheKey(country, uiLang), [country, uiLang]);
+  const data = newsByKey[currentNewsKey] ?? null;
+  const loading = !data;
+
   const weatherPageUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
     return `${window.location.origin}/api/weather?country=${encodeURIComponent(country)}&lang=${encodeURIComponent(uiLang)}`;
   }, [country, uiLang]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const key = newsCacheKey(country, uiLang);
+    if (newsByKeyRef.current[key]) setNewsRefreshing(true);
     setErr(null);
     try {
       const res = await fetch(
         `/api/news?country=${encodeURIComponent(country)}&lang=${encodeURIComponent(uiLang)}`,
-        { cache: "no-store" },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ApiPayload;
-      setData(json);
+      setNewsByKey((prev) => ({ ...prev, [key]: json }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Échec du chargement");
     } finally {
-      setLoading(false);
+      setNewsRefreshing(false);
     }
   }, [country, uiLang]);
 
@@ -270,6 +307,21 @@ export function HomeClient() {
       setWeatherLoading(false);
     }
   }, [country, uiLang]);
+
+  useEffect(() => {
+    const stored = readNewsStorage();
+    if (Object.keys(stored).length === 0) return;
+    setNewsByKey((prev) => ({ ...stored, ...prev }));
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(newsByKey).length === 0) return;
+    try {
+      window.localStorage.setItem(NEWS_STORAGE_KEY, JSON.stringify(newsByKey));
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [newsByKey]);
 
   useEffect(() => {
     void load();
@@ -297,27 +349,57 @@ export function HomeClient() {
   }, [load]);
 
   useEffect(() => {
+    let cancelled = false;
+
     try {
-      const stored = window.localStorage.getItem("tnews.country");
-      if (stored) setCountry(stored as CountryId);
-      const storedLang = window.localStorage.getItem("tnews.uiLang");
-      if (storedLang === "ar" || storedLang === "fr" || storedLang === "en") setUiLang(storedLang);
       const storedTheme = parseStoredTheme(window.localStorage.getItem("tnews.theme"));
       if (storedTheme) setTheme(storedTheme);
+
+      const storedLang = window.localStorage.getItem("tnews.uiLang");
+      if (storedLang === "ar" || storedLang === "fr" || storedLang === "en") setUiLang(storedLang);
+
+      const storedCountry = window.localStorage.getItem("tnews.country");
+      if (isCountryId(storedCountry)) {
+        setCountry(storedCountry);
+        return;
+      }
     } catch {
       // ignore
     }
+
+    void detectDefaultCountry().then((detected) => {
+      if (cancelled || !isCountryId(detected)) return;
+      setCountry(detected);
+      try {
+        window.localStorage.setItem("tnews.country", detected);
+      } catch {
+        // ignore
+      }
+      const cfg = COUNTRIES.find((c) => c.id === detected);
+      if (cfg && !window.localStorage.getItem("tnews.uiLang")) {
+        const lang: UiLang = cfg.primaryLocale === "ar" ? "ar" : "fr";
+        setUiLang(lang);
+        try {
+          window.localStorage.setItem("tnews.uiLang", lang);
+        } catch {
+          // ignore
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     try {
-      window.localStorage.setItem("tnews.country", country);
       window.localStorage.setItem("tnews.uiLang", uiLang);
       window.localStorage.setItem("tnews.theme", theme);
     } catch {
       // ignore
     }
-  }, [country, uiLang, theme]);
+  }, [uiLang, theme]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -563,7 +645,7 @@ export function HomeClient() {
   }, [viewMode, opinionFeedArticles, selectedId]);
 
   const selectArticle = useCallback((article: NewsArticle) => {
-    setSelectedId(article.id);
+    setSelectedId((prev) => (prev === article.id ? null : article.id));
   }, []);
 
   const onOpinionFeedChange = useCallback((articles: NewsArticle[]) => {
@@ -599,9 +681,6 @@ export function HomeClient() {
     if (theme === "light") {
       return `${base} border-slate-200/90 bg-white/95 text-slate-900 shadow-sm hover:border-slate-300`;
     }
-    if (theme === "newspaper") {
-      return `${base} brand-select-newspaper rounded-sm border-2 border-[#3d2f1f] bg-[#fffdf5] px-4 py-1.5 pr-9 font-serif text-[1.15rem] font-extrabold tracking-tight text-[#1a120c] shadow-[inset_0_1px_0_rgba(255,255,255,0.65),0_2px_0_rgba(61,47,31,0.35)] sm:text-2xl`;
-    }
     if (theme === "broadsheet") {
       return `${base} brand-select-broadsheet rounded-sm border-[3px] border-double border-[#1a120c] bg-[#fdf5e6] px-4 py-1.5 pr-9 text-[1.25rem] tracking-tight shadow-[inset_0_2px_0_rgba(255,255,255,0.5)] sm:text-[1.65rem]`;
     }
@@ -620,13 +699,11 @@ export function HomeClient() {
   }, [theme]);
 
   const chevronClass =
-    theme === "newspaper"
-      ? "text-[#6b5344]"
-      : theme === "broadsheet"
-        ? "text-[#4a3628]"
-        : theme === "light"
-          ? "text-slate-500"
-          : "text-slate-400";
+    theme === "broadsheet"
+      ? "text-[#4a3628]"
+      : theme === "light"
+        ? "text-slate-500"
+        : "text-slate-400";
 
   const openShareFromDoubleClick = useCallback(
     (article: NewsArticle) => {
@@ -637,7 +714,7 @@ export function HomeClient() {
 
   return (
     <main
-      className={`relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8 ${theme === "newspaper" ? "newspaper-main" : ""} ${theme === "broadsheet" ? "broadsheet-main" : ""}`}
+      className={`relative mx-auto flex min-h-screen max-w-7xl flex-col gap-5 px-4 pb-16 pt-3 md:px-8 ${theme === "broadsheet" ? "broadsheet-main" : ""}`}
     >
       <header
         className="theme-header sticky top-0 z-50 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#05060a]/88 px-4 py-2 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.85)] backdrop-blur-xl md:-mx-8 md:px-8"
@@ -648,7 +725,15 @@ export function HomeClient() {
           <div className="relative">
             <select
               value={country}
-              onChange={(e) => setCountry(e.target.value as CountryId)}
+              onChange={(e) => {
+                const next = e.target.value as CountryId;
+                setCountry(next);
+                try {
+                  window.localStorage.setItem("tnews.country", next);
+                } catch {
+                  // ignore
+                }
+              }}
               aria-label="Country"
               className={brandSelectClass}
               style={brandSelectStyle}
@@ -715,13 +800,21 @@ export function HomeClient() {
               void load();
             }}
             disabled={
-              viewMode === "weather" ? weatherLoading : viewMode === "opinions" ? opinionsLoading : loading
+              viewMode === "weather"
+                ? weatherLoading
+                : viewMode === "opinions"
+                  ? opinionsLoading
+                  : loading || newsRefreshing
             }
             title="Rafraîchir / تحديث"
             aria-label="Rafraîchir les actualités"
             className="rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-md shadow-emerald-900/25 transition hover:brightness-110 disabled:opacity-50 sm:px-3.5 sm:text-xs"
           >
-            {(viewMode === "weather" ? weatherLoading : viewMode === "opinions" ? opinionsLoading : loading)
+            {(viewMode === "weather"
+              ? weatherLoading
+              : viewMode === "opinions"
+                ? opinionsLoading
+                : loading || newsRefreshing)
               ? "…"
               : "↻"}
           </button>
@@ -775,9 +868,6 @@ export function HomeClient() {
             placeholder={t.searchPlaceholder}
             className="theme-input w-full rounded-lg border border-white/35 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-400 focus:border-white/70"
           />
-          <p className="theme-muted mt-2 text-center text-[10px] leading-snug sm:text-[11px]">
-            {viewMode === "news" ? t.shareHint : t.opinionsSearchHint}
-          </p>
         </div>
       ) : null}
 
@@ -800,38 +890,45 @@ export function HomeClient() {
               <>
                 <div dir="rtl" lang="ar">
             <h2 className="theme-headline mb-4 text-2xl font-bold text-white">{t.newsTitle}</h2>
-            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {arabic.map((a) => (
-                <li key={a.id}>
-                  <ArticleCard
-                    article={a}
-                    onSelect={() => selectArticle(a)}
-                    active={selectedId === a.id}
-                    onShareDoubleClick={() => openShareFromDoubleClick(a)}
-                  />
-                </li>
-              ))}
-            </ul>
+            {loading ? (
+              <NewsGridSkeleton count={6} />
+            ) : (
+              <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {arabic.map((a) => (
+                  <li key={a.id}>
+                    <ArticleCard
+                      article={a}
+                      onSelect={() => selectArticle(a)}
+                      active={selectedId === a.id}
+                      onShareDoubleClick={() => openShareFromDoubleClick(a)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
             {arabic.length === 0 && !loading && (
               <p className="theme-muted text-slate-500">{t.noAr}</p>
             )}
           </div>
 
           <div dir="ltr" lang="fr">
-            <h2 className="theme-headline mb-1 text-xl font-semibold text-slate-200">{t.intlTitle}</h2>
-            <p className="theme-muted mb-4 text-sm text-slate-500">Business News, fil Tunisie, Webdo…</p>
-            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {french.map((a) => (
-                <li key={a.id}>
-                  <ArticleCard
-                    article={a}
-                    onSelect={() => selectArticle(a)}
-                    active={selectedId === a.id}
-                    onShareDoubleClick={() => openShareFromDoubleClick(a)}
-                  />
-                </li>
-              ))}
-            </ul>
+            <h2 className="theme-headline mb-4 text-xl font-semibold text-slate-200">{t.intlTitle}</h2>
+            {loading ? (
+              <NewsGridSkeleton count={6} />
+            ) : (
+              <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {french.map((a) => (
+                  <li key={a.id}>
+                    <ArticleCard
+                      article={a}
+                      onSelect={() => selectArticle(a)}
+                      active={selectedId === a.id}
+                      onShareDoubleClick={() => openShareFromDoubleClick(a)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
             {french.length === 0 && !loading && (
               <p className="theme-muted text-slate-500">{t.noFr}</p>
             )}
@@ -862,11 +959,6 @@ export function HomeClient() {
             lang={selRtl ? "ar" : "fr"}
           >
             <h2 className="theme-headline text-lg font-semibold text-white">{t.selectedTitle}</h2>
-            {!selectedArticle && (
-              <p className="theme-muted mt-2 text-sm text-slate-500">
-                {t.selectHint}
-              </p>
-            )}
             {selectedArticle && (
               <div className="mt-3 flex flex-wrap gap-2" dir="ltr">
                 <button
@@ -931,19 +1023,6 @@ export function HomeClient() {
               </div>
             )}
 
-            {viewMode === "news" ? (
-              <div className="mt-8 border-t border-white/10 pt-4" dir="ltr">
-                <h3 className="theme-muted mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Sources (aperçu)
-                </h3>
-                <ul className="theme-muted flex flex-wrap gap-2 text-[11px] text-slate-400">
-                  <li className="rounded-md bg-emerald-950/40 px-2 py-1 text-emerald-200/90">
-                    AR: Mozaïque, Diwan, Al Jazeera, Nawaat, Rassd…
-                  </li>
-                  <li className="rounded-md bg-white/5 px-2 py-1">FR: Business News, Webdo</li>
-                </ul>
-              </div>
-            ) : null}
           </aside>
 
           {viewMode === "news" ? (
@@ -998,21 +1077,14 @@ export function HomeClient() {
             {weatherLoading ? <p className="theme-muted text-sm">Loading weather…</p> : null}
             {weatherData ? (
               <div className="space-y-4">
-                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-sky-900/60 via-cyan-900/35 to-indigo-900/40 p-4">
-                  <div className="pointer-events-none absolute -right-2 -top-3 text-6xl opacity-30" aria-hidden>
-                    {weatherCodeEmoji(weatherData.current.weatherCode)}
-                  </div>
-                  <p className="text-sm text-slate-300">{weatherData.city}</p>
-                  <p className="mt-1 text-4xl font-bold text-white">
-                    {weatherData.current.temperature == null ? "—" : `${Math.round(weatherData.current.temperature)}°C`}
-                  </p>
-                  <p className="mt-2 flex items-center gap-1.5 text-sm text-slate-200">
-                    <span aria-hidden>{weatherCodeEmoji(weatherData.current.weatherCode)}</span>
-                    <span>{weatherCodeLabel(weatherData.current.weatherCode, uiLang)}</span>
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    {t.weatherWind}: {weatherData.current.windSpeed == null ? "—" : `${Math.round(weatherData.current.windSpeed)} km/h`}
-                  </p>
+                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-sky-950/80 via-amber-950/30 to-indigo-950/70">
+                  <WeatherSunHero
+                    weatherCode={weatherData.current.weatherCode}
+                    temperature={weatherData.current.temperature}
+                    label={weatherCodeLabel(weatherData.current.weatherCode, uiLang)}
+                    city={weatherData.city}
+                    windText={`${t.weatherWind}: ${weatherData.current.windSpeed == null ? "—" : `${Math.round(weatherData.current.windSpeed)} km/h`}`}
+                  />
                 </div>
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {weatherData.daily.map((d) => (

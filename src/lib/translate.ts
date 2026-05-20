@@ -67,22 +67,30 @@ async function mapWithLimit<T, R>(
   return out;
 }
 
+/** Article ids shown in the home grid (matches HomeClient slice caps). */
+function visibleArticleIds(articles: NewsArticle[]): Set<string> {
+  const ar = articles.filter((a) => a.locale === "ar").slice(0, 72);
+  const fr = articles.filter((a) => a.locale === "fr").slice(0, 48);
+  return new Set([...ar, ...fr].map((a) => a.id));
+}
+
 /**
  * Translate article titles according to UI language.
- * Limited subset for performance on serverless environments.
+ * Only visible grid items are translated to limit external API calls.
  */
 export async function translateArticlesForUi(
   articles: NewsArticle[],
   uiLang: UiLang,
 ): Promise<NewsArticle[]> {
   const target = mapUiToTargetLang(uiLang);
-  const maxToTranslate = 80;
+  const visibleIds = visibleArticleIds(articles);
 
-  const head = articles.slice(0, maxToTranslate);
-  const tail = articles.slice(maxToTranslate);
+  const toTranslate = articles.filter(
+    (a) => visibleIds.has(a.id) && !alreadyInTarget(a, target),
+  );
 
-  const translatedHead = await mapWithLimit(head, 6, async (article) => {
-    if (alreadyInTarget(article, target)) return article;
+  const translatedById = new Map<string, NewsArticle>();
+  const translated = await mapWithLimit(toTranslate, 10, async (article) => {
     try {
       const translatedTitle = await translateText(article.title, target);
       return { ...article, translatedTitle };
@@ -90,7 +98,8 @@ export async function translateArticlesForUi(
       return article;
     }
   });
+  for (const a of translated) translatedById.set(a.id, a);
 
-  return [...translatedHead, ...tail];
+  return articles.map((a) => translatedById.get(a.id) ?? a);
 }
 
