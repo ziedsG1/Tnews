@@ -31,7 +31,13 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: "/favicon.svg",
-    apple: "/apple-touch-icon.svg",
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/apple-touch-icon.png", sizes: "152x152", type: "image/png" },
+    ],
+  },
+  appleWebApp: {
+    title: "Tnews",
   },
 };
 
