@@ -28,6 +28,11 @@ export const metadata: Metadata = {
   title: "Tnews — Tunisie & monde en 3D",
   description:
     "Agrégation automatique des grandes voix tunisiennes et fils internationaux, présentés dans une scène 3D interactive.",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: "/favicon.svg",
+    apple: "/apple-touch-icon.svg",
+  },
 };
 
 export default function RootLayout({

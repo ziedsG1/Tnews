@@ -375,362 +375,85 @@ html[data-theme="newspaper"] .theme-header {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-/* 3D weather sun — sphere, corona, heat shimmer */
-.weather-sun-stage {
-  transform-style: preserve-3d;
-  --sun-heat: 0.85;
+/* Simple 2D spinning weather sun (matches share video canvas) */
+.weather-sun-2d {
+  --sun-opacity: 0.85;
+  opacity: var(--sun-opacity);
 }
 
-.weather-sun-orbit {
-  transform-style: preserve-3d;
-}
-
-.weather-sun-orbit--alive {
-  animation: weather-orbit-float 7s ease-in-out infinite;
-}
-
-.weather-sun-orbit--interactive {
-  transform: rotateX(var(--sun-tilt-x, -6deg)) rotateY(var(--sun-tilt-y, 8deg));
-  transition: transform 0.14s ease-out;
-}
-
-@keyframes weather-orbit-float {
-  0%,
-  100% {
-    transform: rotateX(-10deg) rotateY(8deg) translateY(0) scale(1);
-  }
-  33% {
-    transform: rotateX(4deg) rotateY(-14deg) translateY(-5px) scale(1.02);
-  }
-  66% {
-    transform: rotateX(8deg) rotateY(12deg) translateY(3px) scale(0.98);
-  }
-}
-
-/* Heat mirage / shimmer rising from hot sun */
-.weather-heat-field {
-  z-index: 0;
-  overflow: visible;
-}
-
-.weather-heat-haze {
-  position: absolute;
-  left: 5%;
-  right: 5%;
-  bottom: 8%;
-  height: 55%;
-  border-radius: 50% 50% 40% 40% / 60% 60% 100% 100%;
-  background: linear-gradient(
-    to top,
-    rgba(255, 120, 40, calc(0.22 * var(--sun-heat))) 0%,
-    rgba(255, 180, 80, calc(0.08 * var(--sun-heat))) 45%,
-    transparent 100%
-  );
-  filter: blur(14px);
-  animation: weather-heat-haze 2.8s ease-in-out infinite;
-}
-
-.weather-heat-wave {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  height: 14%;
-  border-radius: 50%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 200, 100, calc(0.35 * var(--sun-heat))),
-    rgba(255, 140, 60, calc(0.25 * var(--sun-heat))),
-    transparent
-  );
-  filter: blur(6px);
-  opacity: calc(0.35 + 0.55 * var(--sun-heat));
-}
-
-.weather-heat-wave-1 {
-  bottom: 18%;
-  animation: weather-heat-rise 2.2s ease-in-out infinite;
-}
-.weather-heat-wave-2 {
-  bottom: 28%;
-  animation: weather-heat-rise 2.6s ease-in-out 0.35s infinite;
-}
-.weather-heat-wave-3 {
-  bottom: 38%;
-  animation: weather-heat-rise 2.4s ease-in-out 0.7s infinite;
-}
-.weather-heat-wave-4 {
-  bottom: 48%;
-  animation: weather-heat-rise 2.8s ease-in-out 1.05s infinite;
-}
-
-@keyframes weather-heat-rise {
-  0% {
-    transform: translateY(0) scaleX(0.85) skewX(-2deg);
-    opacity: 0.2;
-  }
-  40% {
-    opacity: 0.85;
-  }
-  100% {
-    transform: translateY(-28px) scaleX(1.08) skewX(3deg);
-    opacity: 0;
-  }
-}
-
-@keyframes weather-heat-haze {
-  0%,
-  100% {
-    transform: scaleY(1) translateY(0);
-    opacity: 0.7;
-  }
-  50% {
-    transform: scaleY(1.12) translateY(-4px);
-    opacity: 1;
-  }
-}
-
-.weather-sun-corona {
-  background: radial-gradient(
-    circle,
-    rgba(255, 230, 150, calc(0.55 * var(--sun-heat))) 0%,
-    rgba(255, 160, 50, calc(0.28 * var(--sun-heat))) 38%,
-    rgba(255, 100, 20, calc(0.1 * var(--sun-heat))) 58%,
-    transparent 72%
-  );
-  filter: blur(4px);
-  transform: translateZ(4px);
-  animation: weather-corona-breathe 3.5s ease-in-out infinite;
-}
-
-@keyframes weather-corona-breathe {
-  0%,
-  100% {
-    transform: translateZ(4px) scale(1);
-    opacity: 0.85;
-  }
-  50% {
-    transform: translateZ(4px) scale(1.08);
-    opacity: 1;
-  }
-}
-
-.weather-sun-rays {
+.weather-sun-2d-rays {
   background: conic-gradient(
     from 0deg,
-    transparent 0deg 6deg,
-    rgba(255, 220, 120, calc(0.5 * var(--sun-heat))) 6deg 11deg,
-    transparent 11deg 18deg,
-    rgba(255, 180, 60, calc(0.4 * var(--sun-heat))) 18deg 24deg,
-    transparent 24deg 32deg,
-    rgba(255, 210, 90, calc(0.55 * var(--sun-heat))) 32deg 38deg,
-    transparent 38deg 46deg,
-    rgba(255, 190, 70, calc(0.45 * var(--sun-heat))) 46deg 52deg,
-    transparent 52deg 60deg,
-    rgba(255, 220, 110, calc(0.5 * var(--sun-heat))) 60deg 66deg,
-    transparent 66deg 74deg,
-    rgba(255, 170, 50, calc(0.38 * var(--sun-heat))) 74deg 80deg,
-    transparent 80deg 88deg,
-    rgba(255, 200, 80, calc(0.48 * var(--sun-heat))) 88deg 94deg,
-    transparent 94deg 102deg,
-    rgba(255, 180, 55, calc(0.42 * var(--sun-heat))) 102deg 108deg,
-    transparent 108deg 116deg,
-    rgba(255, 215, 100, calc(0.52 * var(--sun-heat))) 116deg 122deg,
-    transparent 122deg 130deg,
-    rgba(255, 175, 48, calc(0.4 * var(--sun-heat))) 130deg 136deg,
-    transparent 136deg 144deg,
-    rgba(255, 205, 85, calc(0.46 * var(--sun-heat))) 144deg 150deg,
-    transparent 150deg 158deg,
-    rgba(255, 190, 65, calc(0.44 * var(--sun-heat))) 158deg 164deg,
-    transparent 164deg 172deg,
-    rgba(255, 210, 95, calc(0.5 * var(--sun-heat))) 172deg 178deg,
-    transparent 178deg 186deg,
-    rgba(255, 180, 58, calc(0.4 * var(--sun-heat))) 186deg 192deg,
-    transparent 192deg 200deg,
-    rgba(255, 200, 78, calc(0.48 * var(--sun-heat))) 200deg 206deg,
-    transparent 206deg 214deg,
-    rgba(255, 175, 52, calc(0.42 * var(--sun-heat))) 214deg 220deg,
-    transparent 220deg 228deg,
-    rgba(255, 215, 105, calc(0.5 * var(--sun-heat))) 228deg 234deg,
-    transparent 234deg 242deg,
-    rgba(255, 185, 62, calc(0.43 * var(--sun-heat))) 242deg 248deg,
-    transparent 248deg 256deg,
-    rgba(255, 205, 88, calc(0.47 * var(--sun-heat))) 256deg 262deg,
-    transparent 262deg 270deg,
-    rgba(255, 178, 55, calc(0.41 * var(--sun-heat))) 270deg 276deg,
-    transparent 276deg 284deg,
-    rgba(255, 198, 82, calc(0.46 * var(--sun-heat))) 284deg 290deg,
-    transparent 290deg 298deg,
-    rgba(255, 188, 68, calc(0.44 * var(--sun-heat))) 298deg 304deg,
-    transparent 304deg 312deg,
-    rgba(255, 212, 98, calc(0.5 * var(--sun-heat))) 312deg 318deg,
-    transparent 318deg 326deg,
-    rgba(255, 182, 60, calc(0.42 * var(--sun-heat))) 326deg 332deg,
-    transparent 332deg 340deg,
-    rgba(255, 208, 92, calc(0.48 * var(--sun-heat))) 340deg 346deg,
-    transparent 346deg 354deg,
-    rgba(255, 195, 75, calc(0.45 * var(--sun-heat))) 354deg 360deg
+    transparent 0deg 10deg,
+    rgba(251, 191, 36, 0.8) 10deg 18deg,
+    transparent 18deg 30deg,
+    rgba(251, 191, 36, 0.65) 30deg 38deg,
+    transparent 38deg 50deg,
+    rgba(251, 191, 36, 0.8) 50deg 58deg,
+    transparent 58deg 70deg,
+    rgba(251, 191, 36, 0.65) 70deg 78deg,
+    transparent 78deg 90deg,
+    rgba(251, 191, 36, 0.8) 90deg 98deg,
+    transparent 98deg 110deg,
+    rgba(251, 191, 36, 0.65) 110deg 118deg,
+    transparent 118deg 130deg,
+    rgba(251, 191, 36, 0.8) 130deg 138deg,
+    transparent 138deg 150deg,
+    rgba(251, 191, 36, 0.65) 150deg 158deg,
+    transparent 158deg 170deg,
+    rgba(251, 191, 36, 0.8) 170deg 178deg,
+    transparent 178deg 190deg,
+    rgba(251, 191, 36, 0.65) 190deg 198deg,
+    transparent 198deg 210deg,
+    rgba(251, 191, 36, 0.8) 210deg 218deg,
+    transparent 218deg 230deg,
+    rgba(251, 191, 36, 0.65) 230deg 238deg,
+    transparent 238deg 250deg,
+    rgba(251, 191, 36, 0.8) 250deg 258deg,
+    transparent 258deg 270deg,
+    rgba(251, 191, 36, 0.65) 270deg 278deg,
+    transparent 278deg 290deg,
+    rgba(251, 191, 36, 0.8) 290deg 298deg,
+    transparent 298deg 310deg,
+    rgba(251, 191, 36, 0.65) 310deg 318deg,
+    transparent 318deg 330deg,
+    rgba(251, 191, 36, 0.8) 330deg 338deg,
+    transparent 338deg 350deg,
+    rgba(251, 191, 36, 0.65) 350deg 358deg,
+    transparent 358deg 360deg
   );
+  animation: weather-sun-2d-spin 8s linear infinite;
+}
+
+.weather-sun-2d-disc {
+  width: 42%;
+  height: 42%;
+  background: radial-gradient(circle, #fde68a 0%, #fbbf24 55%, #f59e0b 100%);
+  border: 1.5px solid rgba(245, 158, 11, 0.45);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.35);
+  z-index: 1;
+}
+
+.weather-sun-2d-emoji {
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.weather-sun-2d-cloud {
   border-radius: 50%;
-  animation: weather-sun-spin 22s linear infinite;
-  filter: blur(0.8px);
-  opacity: calc(0.65 + 0.35 * var(--sun-heat));
-  transform: translateZ(-16px);
+  background: rgba(255, 255, 255, 0.38);
+  filter: blur(5px);
+  z-index: 2;
 }
 
-.weather-sun-rays--slow {
-  animation-duration: 38s;
-  animation-direction: reverse;
-  opacity: calc(0.35 + 0.25 * var(--sun-heat));
-  transform: translateZ(-28px) scale(1.12);
-}
-
-.weather-sun-body {
-  transform: translateZ(28px);
-  transform-style: preserve-3d;
-  animation: weather-sun-body-pulse 4s ease-in-out infinite;
-}
-
-@keyframes weather-sun-body-pulse {
-  0%,
-  100% {
-    filter: brightness(1) saturate(1);
-  }
-  50% {
-    filter: brightness(1.14) saturate(1.08);
-  }
-}
-
-.weather-sun-sphere {
-  background: radial-gradient(
-    circle at 34% 28%,
-    #fffef5 0%,
-    #fff3b0 12%,
-    #ffd54a 28%,
-    #ff9f1a 52%,
-    #e85d04 78%,
-    #9a3412 100%
-  );
-  box-shadow:
-    inset -14px -20px 36px rgba(100, 35, 0, 0.5),
-    inset 10px 12px 24px rgba(255, 255, 230, 0.55),
-    0 0 calc(40px + 50px * var(--sun-heat)) rgba(255, 150, 40, calc(0.5 + 0.4 * var(--sun-heat))),
-    0 0 calc(80px + 60px * var(--sun-heat)) rgba(255, 90, 10, calc(0.25 + 0.25 * var(--sun-heat))),
-    0 12px 32px rgba(0, 0, 0, 0.25);
-}
-
-.weather-sun-limb {
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgba(0, 0, 0, 0.06) 40deg,
-    transparent 80deg,
-    rgba(255, 255, 255, 0.12) 120deg,
-    transparent 160deg,
-    rgba(0, 0, 0, 0.05) 220deg,
-    transparent 300deg
-  );
-  animation: weather-sun-spin 14s linear infinite;
-  mix-blend-mode: overlay;
-}
-
-.weather-sun-flare {
-  background: radial-gradient(
-    circle at 72% 32%,
-    rgba(255, 255, 255, 0.75) 0%,
-    rgba(255, 255, 255, 0.15) 18%,
-    transparent 42%
-  );
-  animation: weather-flare-shift 5s ease-in-out infinite;
-}
-
-@keyframes weather-flare-shift {
-  0%,
-  100% {
-    opacity: 0.85;
-    transform: translate(-2%, -1%);
-  }
-  50% {
-    opacity: 1;
-    transform: translate(3%, 2%);
-  }
-}
-
-.weather-sun-emoji {
-  font-size: clamp(2.5rem, 11vw, 3.75rem);
-  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35));
-  opacity: 0.92;
-  transform: translateZ(8px);
-  animation: weather-emoji-float 5s ease-in-out infinite;
-}
-
-.weather-sun-stage--story .weather-sun-emoji {
-  font-size: 4.25rem;
-}
-
-@keyframes weather-emoji-float {
-  0%,
-  100% {
-    transform: translate(-50%, -50%) translateZ(8px) scale(1);
-  }
-  50% {
-    transform: translate(-50%, -52%) translateZ(12px) scale(1.04);
-  }
-}
-
-.weather-sun-cloud {
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.32);
-  filter: blur(10px);
-  transform: translateZ(44px);
-}
-
-.weather-sun-cloud-a {
-  animation: weather-cloud-drift-a 7s ease-in-out infinite alternate;
-}
-
-.weather-sun-cloud-b {
-  opacity: 0.75;
-  animation: weather-cloud-drift-b 9s ease-in-out infinite alternate-reverse;
-}
-
-@keyframes weather-sun-spin {
+@keyframes weather-sun-2d-spin {
   to {
-    transform: translateZ(-16px) rotate(360deg);
-  }
-}
-
-@keyframes weather-cloud-drift-a {
-  from {
-    transform: translateZ(44px) translateX(-8%);
-  }
-  to {
-    transform: translateZ(44px) translateX(10%);
-  }
-}
-
-@keyframes weather-cloud-drift-b {
-  from {
-    transform: translateZ(44px) translateX(6%) scale(0.95);
-  }
-  to {
-    transform: translateZ(44px) translateX(-12%) scale(1.05);
+    transform: rotate(360deg);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .weather-sun-orbit--alive,
-  .weather-sun-rays,
-  .weather-sun-rays--slow,
-  .weather-sun-limb,
-  .weather-sun-flare,
-  .weather-sun-body,
-  .weather-sun-corona,
-  .weather-sun-emoji,
-  .weather-heat-wave,
-  .weather-heat-haze,
-  .weather-sun-cloud-a,
-  .weather-sun-cloud-b {
-    animation: none !important;
+  .weather-sun-2d-rays {
+    animation: none;
   }
 }

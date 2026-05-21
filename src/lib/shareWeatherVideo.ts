@@ -1,4 +1,4 @@
-import { heatIntensity, showHeatShimmer } from "@/lib/weatherSunVisual";
+import { drawSimpleSun2D, SUN_SIZE_PX, sunSpinPeriodMs } from "@/lib/weatherSunVisual";
 import { weatherCodeEmoji, weatherCodeLabel } from "@/lib/weather";
 import type { UiLang } from "@/lib/countries";
 
@@ -34,147 +34,7 @@ function pickRecorderMime(): string | null {
   return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? null;
 }
 
-function drawRays(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  radius: number,
-  rotation: number,
-  glow: number,
-): void {
-  const rays = 16;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(rotation);
-  for (let i = 0; i < rays; i++) {
-    ctx.rotate((Math.PI * 2) / rays);
-    ctx.beginPath();
-    ctx.moveTo(radius * 0.55, 0);
-    ctx.lineTo(radius * 1.05, 0);
-    ctx.strokeStyle = `rgba(251, 191, 36, ${0.35 * glow})`;
-    ctx.lineWidth = radius * 0.12;
-    ctx.lineCap = "round";
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawHeatShimmer(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  radius: number,
-  t: number,
-  heat: number,
-): void {
-  if (!showHeatShimmer(heat)) return;
-  for (let i = 0; i < 4; i++) {
-    const phase = (t * 1.2 + i * 0.22) % 1;
-    const y = cy + radius * 0.35 - phase * radius * 0.55;
-    const w = radius * (1.1 + Math.sin(phase * Math.PI) * 0.15);
-    const g = ctx.createLinearGradient(cx - w, y, cx + w, y);
-    g.addColorStop(0, "transparent");
-    g.addColorStop(0.35, `rgba(255, 200, 100, ${0.35 * heat * (1 - phase)})`);
-    g.addColorStop(0.5, `rgba(255, 130, 50, ${0.28 * heat * (1 - phase)})`);
-    g.addColorStop(0.65, `rgba(255, 200, 100, ${0.35 * heat * (1 - phase)})`);
-    g.addColorStop(1, "transparent");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(cx, y, w, radius * 0.1, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  const haze = ctx.createRadialGradient(cx, cy + radius * 0.5, 0, cx, cy + radius * 0.2, radius * 0.9);
-  haze.addColorStop(0, `rgba(255, 140, 50, ${0.18 * heat})`);
-  haze.addColorStop(1, "transparent");
-  ctx.fillStyle = haze;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + radius * 0.45, radius * 0.85, radius * 0.55, 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawSun(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  radius: number,
-  weatherCode: number | null,
-  temperatureC: number | null,
-  t: number,
-): void {
-  const heat = heatIntensity(weatherCode, temperatureC);
-  const pulse = 1 + Math.sin(t * Math.PI * 4) * 0.07;
-  const rot = t * Math.PI * 2;
-  const bob = Math.sin(t * Math.PI * 2) * radius * 0.04;
-  const tiltX = Math.sin(t * Math.PI * 2) * 0.14;
-  const tiltY = Math.cos(t * Math.PI * 2 + 0.4) * 0.16;
-  const sy = cy + bob;
-
-  drawHeatShimmer(ctx, cx, sy, radius, t, heat);
-
-  const corona = ctx.createRadialGradient(cx, sy, radius * 0.2, cx, sy, radius * 1.35 * pulse);
-  corona.addColorStop(0, `rgba(255, 230, 150, ${0.45 * heat})`);
-  corona.addColorStop(0.45, `rgba(255, 150, 40, ${0.2 * heat})`);
-  corona.addColorStop(1, "transparent");
-  ctx.fillStyle = corona;
-  ctx.beginPath();
-  ctx.arc(cx, sy, radius * 1.35 * pulse, 0, Math.PI * 2);
-  ctx.fill();
-
-  drawRays(ctx, cx, sy, radius * pulse, rot, heat);
-  drawRays(ctx, cx, sy, radius * pulse * 1.08, rot * 0.7 + 0.4, heat * 0.65);
-
-  const grad = ctx.createRadialGradient(
-    cx - radius * 0.22,
-    sy - radius * 0.28,
-    radius * 0.08,
-    cx,
-    sy,
-    radius * 0.74 * pulse,
-  );
-  grad.addColorStop(0, "#fffef5");
-  grad.addColorStop(0.15, "#fff3b0");
-  grad.addColorStop(0.38, "#ffd54a");
-  grad.addColorStop(0.62, "#ff9f1a");
-  grad.addColorStop(1, "#9a3412");
-
-  ctx.save();
-  ctx.translate(cx, sy);
-  ctx.transform(1, tiltX, tiltY, 1, 0, 0);
-  ctx.beginPath();
-  ctx.arc(0, 0, radius * 0.74 * pulse, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.shadowColor = `rgba(255, 150, 40, ${0.55 * heat})`;
-  ctx.shadowBlur = radius * (0.7 + 0.5 * heat);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-
-  const flare = ctx.createRadialGradient(radius * 0.2, -radius * 0.15, 0, radius * 0.15, -radius * 0.1, radius * 0.45);
-  flare.addColorStop(0, "rgba(255,255,255,0.7)");
-  flare.addColorStop(1, "transparent");
-  ctx.fillStyle = flare;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius * 0.74 * pulse, 0, Math.PI * 2);
-  ctx.fill();
-
-  const emoji = weatherCodeEmoji(weatherCode);
-  ctx.font = `${Math.round(radius * 0.95)}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(emoji, 0, radius * 0.02);
-  ctx.restore();
-
-  if ((weatherCode ?? 0) > 3) {
-    const cloudX = cx + Math.sin(t * Math.PI * 2) * radius * 0.12;
-    ctx.fillStyle = "rgba(255,255,255,0.32)";
-    ctx.beginPath();
-    ctx.ellipse(cloudX, sy - radius * 0.38, radius * 0.58, radius * 0.24, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.22)";
-    ctx.beginPath();
-    ctx.ellipse(cloudX + radius * 0.08, sy - radius * 0.28, radius * 0.42, radius * 0.18, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
+const SUN_RADIUS = SUN_SIZE_PX.story / 2;
 
 function drawFrame(
   ctx: CanvasRenderingContext2D,
@@ -204,30 +64,31 @@ function drawFrame(
   ctx.font = "600 12px system-ui, sans-serif";
   ctx.fillText(countryName, w / 2, 54);
 
-  const sunY = h * 0.38;
-  drawSun(ctx, w / 2, sunY, 88, payload.current.weatherCode, payload.current.temperature, progress);
+  const sunY = h * 0.34;
+  const spinTurns = (progress * DEFAULT_DURATION_MS) / sunSpinPeriodMs();
+  drawSimpleSun2D(ctx, w / 2, sunY, SUN_RADIUS, payload.current.weatherCode, spinTurns);
 
   ctx.fillStyle = "rgba(186, 230, 253, 0.9)";
   ctx.font = "14px system-ui, sans-serif";
-  ctx.fillText(payload.city, w / 2, sunY + 118);
+  ctx.fillText(payload.city, w / 2, sunY + SUN_RADIUS + 36);
 
   const temp =
     payload.current.temperature == null ? "—" : `${Math.round(payload.current.temperature)}°C`;
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 52px system-ui, sans-serif";
-  ctx.fillText(temp, w / 2, sunY + 168);
+  ctx.fillText(temp, w / 2, sunY + SUN_RADIUS + 72);
 
   const condition = weatherCodeLabel(payload.current.weatherCode, uiLang);
   ctx.fillStyle = "#ffffff";
   ctx.font = "600 15px system-ui, sans-serif";
-  ctx.fillText(condition, w / 2, sunY + 200, w - 40);
+  ctx.fillText(condition, w / 2, sunY + SUN_RADIUS + 98, w - 40);
 
   const windLabel = uiLang === "ar" ? "الرياح" : uiLang === "fr" ? "Vent" : "Wind";
   const wind =
     payload.current.windSpeed == null ? "—" : `${Math.round(payload.current.windSpeed)} km/h`;
   ctx.fillStyle = "rgba(186, 230, 253, 0.85)";
   ctx.font = "12px system-ui, sans-serif";
-  ctx.fillText(`${windLabel}: ${wind}`, w / 2, sunY + 222);
+  ctx.fillText(`${windLabel}: ${wind}`, w / 2, sunY + SUN_RADIUS + 118);
 
   const loc = uiLang === "ar" ? "ar" : "fr-TN";
   const days = payload.daily.slice(0, 5);
